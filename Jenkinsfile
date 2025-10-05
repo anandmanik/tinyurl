@@ -29,20 +29,20 @@ pipeline {
                 script {
                     sh '''
                         # Start MySQL and Redis for tests
-                        docker-compose up -d mysql redis
+                        docker compose up -d mysql redis
 
                         # Wait for services to be ready
                         sleep 20
 
                         # Check if MySQL is ready
-                        until docker-compose exec -T mysql mysqladmin ping -h localhost --silent; do
+                        until docker compose exec -T mysql mysqladmin ping -h localhost --silent; do
                             echo "Waiting for MySQL..."
                             sleep 2
                         done
                         echo "MySQL is ready!"
 
                         # Check if Redis is ready
-                        until docker-compose exec -T redis redis-cli ping | grep -q PONG; do
+                        until docker compose exec -T redis redis-cli ping | grep -q PONG; do
                             echo "Waiting for Redis..."
                             sleep 2
                         done
@@ -134,19 +134,19 @@ pipeline {
                 script {
                     sh '''
                         # Start services with existing docker-compose.yml
-                        docker-compose up -d
+                        docker compose up -d
 
                         # Wait for services to be ready
                         sleep 30
 
                         # Run integration tests
-                        docker-compose exec -T backend mvn test -Dtest=**/*IntegrationTest
+                        docker compose exec -T backend mvn test -Dtest=**/*IntegrationTest
                     '''
                 }
             }
             post {
                 always {
-                    sh 'docker-compose down -v || true'
+                    sh 'docker compose down -v || true'
                 }
             }
         }
@@ -199,7 +199,7 @@ pipeline {
                 script {
                     sh '''
                         # Deploy using existing docker-compose.yml
-                        docker-compose up -d
+                        docker compose up -d
 
                         # Health check
                         sleep 15
