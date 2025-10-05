@@ -28,35 +28,61 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Stop containers but preserve volumes for faster startup
-                        docker-compose down || true
+                        # Create network (matches docker-compose.yml definition)
+                        docker network create tinyurl_tinyurl-network --driver bridge 2>/dev/null || true
 
-                        # Force kill and remove specific containers if they exist
-                        docker kill tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
-                        docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                        # Check if MySQL and Redis are already running and healthy
+                        MYSQL_HEALTHY=$(docker inspect tinyurl-mysql --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
+                        REDIS_HEALTHY=$(docker inspect tinyurl-redis --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
 
-                        # Give time for socket cleanup
-                        sleep 3
+                        echo "MySQL status: $MYSQL_HEALTHY"
+                        echo "Redis status: $REDIS_HEALTHY"
 
-                        # Start MySQL and Redis for tests
-                        docker-compose up -d mysql redis
+                        if [ "$MYSQL_HEALTHY" = "healthy" ] && [ "$REDIS_HEALTHY" = "healthy" ]; then
+                            echo "✅ MySQL and Redis are already healthy - reusing existing services"
+                        else
+                            echo "🔄 Starting/restarting services..."
 
-                        # Wait for services to be ready
-                        sleep 20
+                            # Only clean up unhealthy services
+                            if [ "$MYSQL_HEALTHY" != "healthy" ]; then
+                                docker kill tinyurl-mysql 2>/dev/null || true
+                                docker rm -f tinyurl-mysql 2>/dev/null || true
+                            fi
 
-                        # Check if MySQL is ready
-                        until docker-compose exec -T mysql mysqladmin ping -h localhost --silent; do
-                            echo "Waiting for MySQL..."
-                            sleep 2
-                        done
-                        echo "MySQL is ready!"
+                            if [ "$REDIS_HEALTHY" != "healthy" ]; then
+                                docker kill tinyurl-redis 2>/dev/null || true
+                                docker rm -f tinyurl-redis 2>/dev/null || true
+                            fi
 
-                        # Check if Redis is ready
-                        until docker-compose exec -T redis redis-cli ping | grep -q PONG; do
-                            echo "Waiting for Redis..."
-                            sleep 2
-                        done
-                        echo "Redis is ready!"
+                            # Clean up backend/frontend (they restart for each build anyway)
+                            docker kill tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                            docker rm -f tinyurl-backend tinyurl-frontend 2>/dev/null || true
+
+                            # Start MySQL and Redis
+                            docker-compose up -d mysql redis
+                        fi
+
+                        # Wait for services to be ready (shorter if reusing)
+                        if [ "$MYSQL_HEALTHY" = "healthy" ] && [ "$REDIS_HEALTHY" = "healthy" ]; then
+                            echo "⚡ Services already healthy - skipping wait"
+                        else
+                            echo "⏳ Waiting for new services to be ready..."
+                            sleep 15
+
+                            # Check if MySQL is ready
+                            until docker-compose exec -T mysql mysqladmin ping -h localhost --silent; do
+                                echo "Waiting for MySQL..."
+                                sleep 2
+                            done
+                            echo "MySQL is ready!"
+
+                            # Check if Redis is ready
+                            until docker-compose exec -T redis redis-cli ping | grep -q PONG; do
+                                echo "Waiting for Redis..."
+                                sleep 2
+                            done
+                            echo "Redis is ready!"
+                        fi
                     '''
                 }
             }
