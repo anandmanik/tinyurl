@@ -33,13 +33,13 @@ pipeline {
                                 sh '''
                                     cd tinyurl-api
                                     # Build
-                                    ./mvnw clean compile -DskipTests
+                                    mvn clean compile -DskipTests
 
                                     # Test
-                                    ./mvnw test
+                                    mvn test
 
                                     # Package
-                                    ./mvnw package -DskipTests
+                                    mvn package -DskipTests
                                 '''
                             }
 
@@ -112,7 +112,7 @@ pipeline {
                         sleep 30
 
                         # Run integration tests
-                        docker-compose exec -T tinyurl-api ./mvnw test -Dtest=**/*IntegrationTest
+                        docker-compose exec -T tinyurl-api mvn test -Dtest=**/*IntegrationTest
                     '''
                 }
             }
@@ -135,7 +135,7 @@ pipeline {
                     steps {
                         sh '''
                             cd tinyurl-api
-                            ./mvnw org.owasp:dependency-check-maven:check
+                            mvn org.owasp:dependency-check-maven:check
                         '''
 
                         publishHTML([
