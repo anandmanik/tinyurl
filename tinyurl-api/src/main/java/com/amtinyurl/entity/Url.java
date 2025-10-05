@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 public class Url {
 
     @Id
-    @Column(name = "code", length = 7, nullable = false)
+    @Column(name = "code", length = 7, nullable = false, columnDefinition = "CHAR(7)")
     @Size(min = 7, max = 7)
     @NotBlank
     private String code;

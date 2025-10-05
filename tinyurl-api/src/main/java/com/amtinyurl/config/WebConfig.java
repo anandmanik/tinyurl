@@ -16,7 +16,9 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void configurePathMatch(PathMatchConfigurer configurer) {
-        configurer.addPathPrefix("/api", c -> c.getPackageName().contains("controller"));
+        configurer.addPathPrefix("/api", c ->
+            c.getPackageName().contains("controller") &&
+            !c.getSimpleName().equals("RedirectController"));
     }
 
     @Override

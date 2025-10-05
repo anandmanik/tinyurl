@@ -5,8 +5,10 @@
 CREATE TABLE urls (
     code CHAR(7) NOT NULL PRIMARY KEY,
     normalized_url VARCHAR(2048) NOT NULL,
+    url_hash CHAR(64) GENERATED ALWAYS AS (SHA2(normalized_url, 256)) STORED,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE INDEX idx_normalized_url (normalized_url)
+    UNIQUE INDEX idx_url_hash (url_hash),
+    INDEX idx_normalized_url (normalized_url(191))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
 -- Table for associating users with their shortened URLs
@@ -17,4 +19,4 @@ CREATE TABLE user_urls (
     PRIMARY KEY (user_id_lower, code),
     FOREIGN KEY (code) REFERENCES urls(code) ON DELETE CASCADE,
     INDEX idx_user_id_lower (user_id_lower)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

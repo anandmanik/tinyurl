@@ -116,3 +116,15 @@ build/Release
 *.db
 *.sqlite
 *.sqlite3
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+.docker/
+
+# Docker volumes and data
+mysql_data/
+redis_data/
+
+# Docker environment files
+.env.docker

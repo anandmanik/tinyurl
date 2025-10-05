@@ -22,7 +22,7 @@ public class RedirectController {
     private final TinyUrlService tinyUrlService;
     private final UrlService urlService;
 
-    @GetMapping("/{code}")
+    @GetMapping("/{code:[a-z0-9]{7}}")
     public ResponseEntity<?> redirect(@PathVariable String code) {
         String normalizedCode = urlService.normalizeShortCode(code);
 
