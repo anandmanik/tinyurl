@@ -28,9 +28,6 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Create network (matches docker-compose.yml definition)
-                        docker network create tinyurl_tinyurl-network --driver bridge 2>/dev/null || true
-
                         # Check if MySQL and Redis are already running and healthy
                         MYSQL_HEALTHY=$(docker inspect tinyurl-mysql --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
                         REDIS_HEALTHY=$(docker inspect tinyurl-redis --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
@@ -93,7 +90,10 @@ pipeline {
                 stage('Backend Pipeline') {
                     steps {
                         script {
-                            docker.image('maven:3.9-eclipse-temurin-25').inside('-v /var/run/docker.sock:/var/run/docker.sock --network tinyurl_tinyurl-network') {
+                            // Get the actual network name created by docker-compose
+                            def networkName = sh(script: 'docker network ls --filter name=tinyurl --format "{{.Name}}" | grep -v "_tinyurl-network" | head -1', returnStdout: true).trim()
+
+                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${networkName}") {
                                 sh '''
                                     cd tinyurl-api
                                     # Build
@@ -126,7 +126,10 @@ pipeline {
                 stage('Frontend Pipeline') {
                     steps {
                         script {
-                            docker.image('node:18-alpine').inside('-v /var/run/docker.sock:/var/run/docker.sock --network tinyurl_tinyurl-network') {
+                            // Get the actual network name created by docker-compose
+                            def networkName = sh(script: 'docker network ls --filter name=tinyurl --format "{{.Name}}" | grep -v "_tinyurl-network" | head -1', returnStdout: true).trim()
+
+                            docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${networkName}") {
                                 sh '''
                                     cd tinyurl-frontend
                                     # Install dependencies
