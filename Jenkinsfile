@@ -20,6 +20,14 @@ pipeline {
                         script: 'git rev-parse HEAD',
                         returnStdout: true
                     ).trim().take(7)
+
+                    // Load shared configuration
+                    def props = readProperties file: 'jenkins.properties'
+                    env.GLOBAL_NETWORK = props.GLOBAL_NETWORK
+                    env.MYSQL_CONTAINER = props.MYSQL_CONTAINER
+                    env.REDIS_CONTAINER = props.REDIS_CONTAINER
+                    env.BACKEND_CONTAINER = props.BACKEND_CONTAINER
+                    env.FRONTEND_CONTAINER = props.FRONTEND_CONTAINER
                 }
             }
         }
@@ -29,8 +37,8 @@ pipeline {
                 script {
                     sh '''
                         # Check if MySQL and Redis are already running and healthy
-                        MYSQL_HEALTHY=$(docker inspect tinyurl-mysql --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
-                        REDIS_HEALTHY=$(docker inspect tinyurl-redis --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
+                        MYSQL_HEALTHY=$(docker inspect ${MYSQL_CONTAINER} --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
+                        REDIS_HEALTHY=$(docker inspect ${REDIS_CONTAINER} --format='{{.State.Health.Status}}' 2>/dev/null || echo "not_running")
 
                         echo "MySQL status: $MYSQL_HEALTHY"
                         echo "Redis status: $REDIS_HEALTHY"
@@ -42,21 +50,43 @@ pipeline {
 
                             # Only clean up unhealthy services
                             if [ "$MYSQL_HEALTHY" != "healthy" ]; then
-                                docker kill tinyurl-mysql 2>/dev/null || true
-                                docker rm -f tinyurl-mysql 2>/dev/null || true
+                                docker kill ${MYSQL_CONTAINER} 2>/dev/null || true
+                                docker rm -f ${MYSQL_CONTAINER} 2>/dev/null || true
                             fi
 
                             if [ "$REDIS_HEALTHY" != "healthy" ]; then
-                                docker kill tinyurl-redis 2>/dev/null || true
-                                docker rm -f tinyurl-redis 2>/dev/null || true
+                                docker kill ${REDIS_CONTAINER} 2>/dev/null || true
+                                docker rm -f ${REDIS_CONTAINER} 2>/dev/null || true
                             fi
 
                             # Clean up backend/frontend (they restart for each build anyway)
-                            docker kill tinyurl-backend tinyurl-frontend 2>/dev/null || true
-                            docker rm -f tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                            docker kill ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
+                            docker rm -f ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
 
-                            # Start MySQL and Redis
-                            docker-compose up -d mysql redis
+                            # Create global network that persists across builds
+                            docker network create ${GLOBAL_NETWORK} --driver bridge || echo "Global network already exists"
+
+                            # Start MySQL and Redis directly on global network
+                            docker run -d --name ${MYSQL_CONTAINER} --network ${GLOBAL_NETWORK} \
+                                -e MYSQL_ROOT_PASSWORD=admin \
+                                -e MYSQL_DATABASE=tinyurl \
+                                -e MYSQL_USER=tinyurl \
+                                -e MYSQL_PASSWORD=tinyurl \
+                                -p 3306:3306 \
+                                -v mysql_data:/var/lib/mysql \
+                                --health-cmd="mysqladmin ping -h localhost" \
+                                --health-timeout=20s \
+                                --health-retries=10 \
+                                mysql:8.0 2>/dev/null || echo "MySQL container already exists"
+
+                            docker run -d --name ${REDIS_CONTAINER} --network ${GLOBAL_NETWORK} \
+                                -p 6379:6379 \
+                                -v redis_data:/data \
+                                --health-cmd="redis-cli ping" \
+                                --health-interval=30s \
+                                --health-timeout=3s \
+                                --health-retries=3 \
+                                redis:7-alpine 2>/dev/null || echo "Redis container already exists"
                         fi
 
                         # Wait for services to be ready (shorter if reusing)
@@ -67,14 +97,14 @@ pipeline {
                             sleep 15
 
                             # Check if MySQL is ready
-                            until docker-compose exec -T mysql mysqladmin ping -h localhost --silent; do
+                            until docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent; do
                                 echo "Waiting for MySQL..."
                                 sleep 2
                             done
                             echo "MySQL is ready!"
 
                             # Check if Redis is ready
-                            until docker-compose exec -T redis redis-cli ping | grep -q PONG; do
+                            until docker exec ${REDIS_CONTAINER} redis-cli ping | grep -q PONG; do
                                 echo "Waiting for Redis..."
                                 sleep 2
                             done
@@ -90,10 +120,7 @@ pipeline {
                 stage('Backend Pipeline') {
                     steps {
                         script {
-                            // Get the actual network name created by docker-compose
-                            def networkName = sh(script: 'docker network ls --filter name=tinyurl --format "{{.Name}}" | grep -v "_tinyurl-network" | head -1', returnStdout: true).trim()
-
-                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${networkName}") {
+                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK}") {
                                 sh '''
                                     cd tinyurl-api
                                     # Build
@@ -127,9 +154,9 @@ pipeline {
                     steps {
                         script {
                             // Get the actual network name created by docker-compose
-                            def networkName = sh(script: 'docker network ls --filter name=tinyurl --format "{{.Name}}" | grep -v "_tinyurl-network" | head -1', returnStdout: true).trim()
+                            def networkName = sh(script: 'docker network ls --filter name=tinyurl --format "{{.Name}}" | head -1', returnStdout: true).trim()
 
-                            docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${networkName}") {
+                            docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK}") {
                                 sh '''
                                     cd tinyurl-frontend
                                     # Install dependencies
@@ -172,14 +199,28 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Start services with existing docker-compose.yml (reusing MySQL/Redis from Start Services)
-                        docker-compose up -d
+                        # Start backend and frontend on global network
+                        docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
+                            -e SPRING_PROFILES_ACTIVE=docker \
+                            -e SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_CONTAINER}:3306/tinyurl \
+                            -e SPRING_DATASOURCE_USERNAME=root \
+                            -e SPRING_DATASOURCE_PASSWORD=admin \
+                            -e REDIS_URL=redis://${REDIS_CONTAINER}:6379 \
+                            -e JWT_SECRET=1fe2275ec12ed522e57b743c64facf12 \
+                            -e BASE_URL=http://localhost \
+                            -p 8080:8080 \
+                            ${BACKEND_IMAGE}:${BUILD_NUMBER} || echo "Backend container already exists"
+
+                        docker run -d --name ${FRONTEND_CONTAINER} --network ${GLOBAL_NETWORK} \
+                            -e REACT_APP_API_URL=http://localhost:8080 \
+                            -p 3000:80 \
+                            ${FRONTEND_IMAGE}:${BUILD_NUMBER} || echo "Frontend container already exists"
 
                         # Wait for services to be ready
                         sleep 30
 
                         # Run integration tests
-                        docker-compose exec -T backend mvn test -Dtest=**/*IntegrationTest
+                        docker exec ${BACKEND_CONTAINER} mvn test -Dtest=**/*IntegrationTest
                     '''
                 }
             }
@@ -237,8 +278,9 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Deploy using existing docker-compose.yml (reusing MySQL/Redis from Start Services)
-                        docker-compose up -d
+                        # Ensure backend and frontend are running (they should be from Integration Tests)
+                        docker start ${BACKEND_CONTAINER} 2>/dev/null || echo "Backend already running"
+                        docker start ${FRONTEND_CONTAINER} 2>/dev/null || echo "Frontend already running"
 
                         # Health check
                         sleep 15

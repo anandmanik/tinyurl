@@ -18,25 +18,30 @@ pipeline {
         stage('Cleanup TinyURL Services') {
             steps {
                 script {
+                    // Load shared configuration
+                    def props = readProperties file: 'jenkins.properties'
+                    env.GLOBAL_NETWORK = props.GLOBAL_NETWORK
+                    env.MYSQL_CONTAINER = props.MYSQL_CONTAINER
+                    env.REDIS_CONTAINER = props.REDIS_CONTAINER
+                    env.BACKEND_CONTAINER = props.BACKEND_CONTAINER
+                    env.FRONTEND_CONTAINER = props.FRONTEND_CONTAINER
+
                     echo "🧹 Cleaning up ALL TinyURL services (ignoring health status)..."
 
                     // Always force stop all containers first
                     sh '''
                         echo "🛑 Force stopping all TinyURL containers..."
-                        docker kill tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
-                        docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                        docker kill ${MYSQL_CONTAINER} ${REDIS_CONTAINER} ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
+                        docker rm -f ${MYSQL_CONTAINER} ${REDIS_CONTAINER} ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
                     '''
 
                     if (params.REMOVE_VOLUMES) {
                         sh '''
-                            echo "🗑️ Stopping services and removing volumes..."
-                            docker-compose down -v --remove-orphans || true
+                            echo "🗑️ Removing Docker volumes..."
+                            docker volume rm mysql_data redis_data 2>/dev/null || echo "Volumes already removed or don't exist"
                         '''
                     } else {
-                        sh '''
-                            echo "🛑 Stopping services but preserving volumes..."
-                            docker-compose down --remove-orphans || true
-                        '''
+                        echo "🛑 Preserving Docker volumes as requested"
                     }
 
                     if (params.FORCE_CLEANUP) {
@@ -46,8 +51,8 @@ pipeline {
                             # Remove any containers with tinyurl in the name
                             docker ps -a --filter name=tinyurl --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
 
-                            # Remove the network
-                            docker network rm tinyurl_tinyurl-network 2>/dev/null || true
+                            # Remove global network only (no docker-compose networks used)
+                            docker network rm ${GLOBAL_NETWORK} 2>/dev/null || true
 
                             # Remove any tinyurl images (optional - commented out by default)
                             # docker images --filter reference="tinyurl*" --format "{{.ID}}" | xargs -r docker rmi -f 2>/dev/null || true
