@@ -24,18 +24,46 @@ pipeline {
             }
         }
 
+        stage('Start Services') {
+            steps {
+                script {
+                    sh '''
+                        # Start MySQL and Redis for tests
+                        docker-compose up -d mysql redis
+
+                        # Wait for services to be ready
+                        sleep 20
+
+                        # Check if MySQL is ready
+                        until docker-compose exec -T mysql mysqladmin ping -h localhost --silent; do
+                            echo "Waiting for MySQL..."
+                            sleep 2
+                        done
+                        echo "MySQL is ready!"
+
+                        # Check if Redis is ready
+                        until docker-compose exec -T redis redis-cli ping | grep -q PONG; do
+                            echo "Waiting for Redis..."
+                            sleep 2
+                        done
+                        echo "Redis is ready!"
+                    '''
+                }
+            }
+        }
+
         stage('Build & Test') {
             parallel {
                 stage('Backend Pipeline') {
                     steps {
                         script {
-                            docker.image('maven:3.9-eclipse-temurin-21').inside('-v /var/run/docker.sock:/var/run/docker.sock') {
+                            docker.image('maven:3.9-eclipse-temurin-25').inside('-v /var/run/docker.sock:/var/run/docker.sock --network tinyurl_tinyurl-network') {
                                 sh '''
                                     cd tinyurl-api
                                     # Build
                                     mvn clean compile -DskipTests
 
-                                    # Test
+                                    # Test (with database available)
                                     mvn test
 
                                     # Package
@@ -80,7 +108,7 @@ pipeline {
                             }
 
                             // Archive build artifacts
-                            archiveArtifacts artifacts: 'tinyurl-frontend/dist/**/*', fingerprint: true, allowEmptyArchive: true
+                            archiveArtifacts artifacts: 'tinyurl-frontend/build/**/*', fingerprint: true, allowEmptyArchive: true
 
                             // Docker build outside container
                             sh '''
@@ -112,7 +140,7 @@ pipeline {
                         sleep 30
 
                         # Run integration tests
-                        docker-compose exec -T tinyurl-api mvn test -Dtest=**/*IntegrationTest
+                        docker-compose exec -T backend mvn test -Dtest=**/*IntegrationTest
                     '''
                 }
             }
@@ -175,8 +203,8 @@ pipeline {
 
                         # Health check
                         sleep 15
-                        curl -f http://localhost:8080/actuator/health || exit 1
-                        curl -f http://localhost:3000 || exit 1
+                        curl -f http://localhost:8080/api/healthz || exit 1
+                        curl -f http://localhost:3000/ || exit 1
                     '''
                 }
             }
@@ -185,6 +213,7 @@ pipeline {
 
     post {
         always {
+            sh 'docker-compose down -v || true'
             cleanWs()
         }
 
