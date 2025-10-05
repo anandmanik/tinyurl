@@ -31,6 +31,12 @@ pipeline {
                         # Clean up any existing containers
                         docker-compose down -v || true
 
+                        # Force remove specific containers if they exist
+                        docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend || true
+
+                        # Remove any conflicting networks
+                        docker network rm tinyurl_tinyurl-network || true
+
                         # Start MySQL and Redis for tests
                         docker-compose up -d mysql redis
 
@@ -136,10 +142,7 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Clean up any existing containers
-                        docker-compose down -v || true
-
-                        # Start services with existing docker-compose.yml
+                        # Start services with existing docker-compose.yml (reusing MySQL/Redis from Start Services)
                         docker-compose up -d
 
                         # Wait for services to be ready
@@ -204,10 +207,7 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Clean up any existing containers
-                        docker-compose down -v || true
-
-                        # Deploy using existing docker-compose.yml
+                        # Deploy using existing docker-compose.yml (reusing MySQL/Redis from Start Services)
                         docker-compose up -d
 
                         # Health check
