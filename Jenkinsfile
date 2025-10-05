@@ -29,7 +29,7 @@ pipeline {
                 stage('Backend Pipeline') {
                     steps {
                         script {
-                            docker.image('eclipse-temurin:21-jdk').inside('-v /var/run/docker.sock:/var/run/docker.sock') {
+                            docker.image('maven:3.9-eclipse-temurin-21').inside('-v /var/run/docker.sock:/var/run/docker.sock') {
                                 sh '''
                                     cd tinyurl-api
                                     # Build
