@@ -156,7 +156,7 @@ pipeline {
             }
             post {
                 always {
-                    sh 'docker-compose down -v || true'
+                    echo 'Integration tests completed - keeping services running for deploy stage'
                 }
             }
         }
@@ -223,7 +223,14 @@ pipeline {
 
     post {
         always {
-            sh 'docker-compose down -v || true'
+            echo '✅ Pipeline completed - Services are still running for manual verification'
+            echo '🔗 Access your services at:'
+            echo '   • Frontend: http://localhost:3000'
+            echo '   • Backend: http://localhost:8080'
+            echo '   • MySQL: localhost:3306'
+            echo '   • Redis: localhost:6379'
+            echo ''
+            echo '🛑 To stop services manually, run: docker-compose down -v'
             cleanWs()
         }
 

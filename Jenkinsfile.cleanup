@@ -1,0 +1,60 @@
+pipeline {
+    agent any
+
+    parameters {
+        booleanParam(
+            name: 'REMOVE_VOLUMES',
+            defaultValue: true,
+            description: 'Remove Docker volumes (destroys database data)'
+        )
+        booleanParam(
+            name: 'FORCE_CLEANUP',
+            defaultValue: false,
+            description: 'Force remove containers even if they are running'
+        )
+    }
+
+    stages {
+        stage('Cleanup TinyURL Services') {
+            steps {
+                script {
+                    echo "🧹 Cleaning up TinyURL services..."
+
+                    if (params.REMOVE_VOLUMES) {
+                        sh '''
+                            echo "🗑️ Stopping services and removing volumes..."
+                            docker-compose down -v || true
+                        '''
+                    } else {
+                        sh '''
+                            echo "🛑 Stopping services but preserving volumes..."
+                            docker-compose down || true
+                        '''
+                    }
+
+                    if (params.FORCE_CLEANUP) {
+                        sh '''
+                            echo "💥 Force removing containers..."
+                            docker kill tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                            docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                        '''
+                    }
+
+                    sh '''
+                        echo "🧽 Cleaning up unused Docker resources..."
+                        docker system prune -f || true
+                    '''
+
+                    echo "✅ Cleanup completed!"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '🎯 TinyURL services have been cleaned up'
+            echo '▶️ You can now run the main pipeline again'
+        }
+    }
+}
