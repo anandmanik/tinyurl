@@ -29,7 +29,7 @@ pipeline {
                 script {
                     sh '''
                         # Start MySQL and Redis for tests
-                        docker compose up -d mysql redis
+                        docker compose up --detach mysql redis
 
                         # Wait for services to be ready
                         sleep 20
@@ -134,7 +134,7 @@ pipeline {
                 script {
                     sh '''
                         # Start services with existing docker-compose.yml
-                        docker compose up -d
+                        docker compose up --detach
 
                         # Wait for services to be ready
                         sleep 30
@@ -146,7 +146,7 @@ pipeline {
             }
             post {
                 always {
-                    sh 'docker compose down -v || true'
+                    sh 'docker compose down --volumes || true'
                 }
             }
         }
@@ -199,7 +199,7 @@ pipeline {
                 script {
                     sh '''
                         # Deploy using existing docker-compose.yml
-                        docker compose up -d
+                        docker compose up --detach
 
                         # Health check
                         sleep 15
@@ -213,7 +213,7 @@ pipeline {
 
     post {
         always {
-            sh 'docker-compose down -v || true'
+            sh 'docker compose down --volumes || true'
             cleanWs()
         }
 
