@@ -64,6 +64,7 @@ A complete URL shortening service built with Spring Boot backend and React front
 4. **Access the application**
    - Frontend: http://localhost:3000
    - Backend API: http://localhost:8080
+   - API Documentation: http://localhost:8080/api/swagger-ui.html
    - Health Check: http://localhost:8080/api/healthz
 
 ### Local Development
@@ -140,6 +141,18 @@ CREATE TABLE user_urls (
 
 ## 📡 API Documentation
 
+### Interactive API Documentation
+
+The API includes comprehensive Swagger/OpenAPI documentation accessible at:
+- **Swagger UI**: http://localhost:8080/api/swagger-ui.html
+- **OpenAPI Spec**: http://localhost:8080/api/api-docs
+
+The documentation provides:
+- Complete endpoint specifications with examples
+- Request/response schemas
+- Authentication requirements
+- Interactive testing interface
+
 ### Authentication
 
 All API endpoints (except health check and redirects) require JWT authentication:
@@ -204,10 +217,12 @@ tinyurl/
 │   │       ├── entity/          # JPA entities
 │   │       ├── repository/      # Data access
 │   │       ├── security/        # JWT and security
-│   │       └── dto/            # Data transfer objects
+│   │       ├── dto/            # Data transfer objects
+│   │       └── config/         # Configuration classes
 │   ├── src/main/resources/
 │   │   ├── application.properties
 │   │   ├── application-docker.properties
+│   │   ├── openapi.yaml        # API documentation
 │   │   └── db/migration/       # Flyway migrations
 │   └── Dockerfile
 ├── tinyurl-frontend/           # React frontend

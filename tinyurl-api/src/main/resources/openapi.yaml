@@ -1,0 +1,468 @@
+openapi: 3.0.3
+info:
+  title: TinyURL API
+  version: 1.0.0
+  description: |
+    A comprehensive URL shortening service with JWT authentication, Redis caching, and MySQL persistence.
+
+    ## Features
+    - **URL Shortening**: Convert long URLs into short, shareable links
+    - **User Management**: JWT-based authentication with user-specific URL management
+    - **Caching**: Redis-powered caching for optimal performance
+    - **Analytics**: Track URL usage and creation timestamps
+    - **Redirect Service**: Fast 301 permanent redirects with proper cache headers
+
+    ## Authentication
+    Most endpoints require JWT authentication. Get your token from the `/api/token` endpoint and include it in the `Authorization` header as `Bearer <token>`.
+
+    ## Rate Limiting
+    The API implements reasonable rate limiting to ensure fair usage.
+
+    ## Error Handling
+    All errors follow a consistent format with appropriate HTTP status codes and descriptive messages.
+
+  contact:
+    name: TinyURL API Support
+    email: support@tinyurl.example.com
+    url: https://github.com/example/tinyurl
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.tinyurl.example.com
+    description: Production server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/token:
+    post:
+      tags:
+        - Authentication
+      summary: Generate JWT token
+      description: |
+        Generate a JWT token for a given user ID. The user ID is case-insensitive and will be normalized to lowercase.
+        Tokens are permanent and stateless.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            examples:
+              basic:
+                summary: Basic token request
+                value:
+                  userId: user01
+      responses:
+        '200':
+          description: Token generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              examples:
+                success:
+                  summary: Successful token generation
+                  value:
+                    token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMDEiLCJpYXQiOjE2OTY1MTIwMDAsImV4cCI6MTY5NjU5ODQwMH0.xyz
+                    userId: user01
+        '400':
+          description: Invalid request body or user ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                validation_error:
+                  summary: Validation error
+                  value:
+                    error: Validation failed
+                    message: userId must be 6 alphanumeric characters
+
+  /api/urls:
+    post:
+      tags:
+        - URL Management
+      summary: Create or retrieve short URL
+      description: |
+        Create a new short URL or retrieve an existing one if the URL has already been shortened.
+        URLs are globally deduplicated and associated with users.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUrlRequest'
+            examples:
+              basic:
+                summary: Basic URL shortening
+                value:
+                  url: https://example.com/very/long/url/path?param=value
+      responses:
+        '201':
+          description: New short URL created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUrlResponse'
+              examples:
+                new_url:
+                  summary: New URL created
+                  value:
+                    code: abc123d
+                    shortUrl: http://localhost/abc123d
+                    url: https://example.com/very/long/url
+                    createdAt: "2023-10-05T12:00:00Z"
+                    existed: false
+        '200':
+          description: Existing short URL retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUrlResponse'
+              examples:
+                existing_url:
+                  summary: Existing URL retrieved
+                  value:
+                    code: abc123d
+                    shortUrl: http://localhost/abc123d
+                    url: https://example.com/very/long/url
+                    createdAt: "2023-10-05T11:30:00Z"
+                    existed: true
+        '400':
+          description: Invalid URL format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Service unavailable - collision retry exhausted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - URL Management
+      summary: Get user's URLs
+      description: |
+        Retrieve all shortened URLs associated with the authenticated user, ordered by creation date.
+      responses:
+        '200':
+          description: User's URLs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UrlListResponse'
+              examples:
+                user_urls:
+                  summary: User's URL list
+                  value:
+                    - code: abc123d
+                      shortUrl: http://localhost/abc123d
+                      url: https://example.com/first-url
+                      createdAt: "2023-10-05T12:00:00Z"
+                    - code: def456g
+                      shortUrl: http://localhost/def456g
+                      url: https://example.com/second-url
+                      createdAt: "2023-10-05T11:30:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/urls/{code}:
+    delete:
+      tags:
+        - URL Management
+      summary: Remove URL association
+      description: |
+        Remove the association between the authenticated user and a short URL.
+        The URL itself remains active for other users who may have created it.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: Short URL code to remove association for
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{7}$'
+            example: abc123d
+      responses:
+        '204':
+          description: URL association removed successfully
+        '404':
+          description: URL association not found for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_found:
+                  summary: Association not found
+                  value:
+                    error: Not Found
+                    message: URL association not found for this user
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /{code}:
+    get:
+      tags:
+        - URL Redirect
+      summary: Redirect to original URL
+      description: |
+        Redirect a short URL code to its original destination URL with a 301 permanent redirect.
+        No authentication required.
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          description: 7-character short URL code (alphanumeric, lowercase)
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{7}$'
+            example: abc123d
+      responses:
+        '301':
+          description: Permanent redirect to original URL
+          headers:
+            Location:
+              description: Original URL to redirect to
+              schema:
+                type: string
+                format: uri
+                example: https://example.com/original-url
+            Cache-Control:
+              description: Cache control header
+              schema:
+                type: string
+                example: max-age=100, public
+        '404':
+          description: Short URL code not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                not_found:
+                  summary: Code not found
+                  value:
+                    error: Short code not found
+                    code: NOT_FOUND
+
+  /api/healthz:
+    get:
+      tags:
+        - Health Check
+      summary: Health check
+      description: |
+        Check the health status of all system components including MySQL and Redis connections.
+      security: []
+      responses:
+        '200':
+          description: All systems healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                healthy:
+                  summary: All systems healthy
+                  value:
+                    status: ok
+                    checks:
+                      mysql: ok
+                      redis: ok
+        '503':
+          description: One or more systems unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                unhealthy:
+                  summary: Redis unhealthy
+                  value:
+                    status: failed
+                    checks:
+                      mysql: ok
+                      redis: failed
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for API authentication. Get your token from the /api/token endpoint.
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthorized:
+              summary: Missing or invalid token
+              value:
+                error: Unauthorized
+                message: Valid JWT token required
+
+  schemas:
+    TokenRequest:
+      type: object
+      required:
+        - userId
+      properties:
+        userId:
+          type: string
+          pattern: '^[a-zA-Z0-9]{6}$'
+          minLength: 6
+          maxLength: 6
+          description: User identifier for token generation
+          example: user01
+      description: Request to generate a JWT token
+
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT token for API authentication
+          example: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMDEiLCJpYXQiOjE2OTY1MTIwMDAsImV4cCI6MTY5NjU5ODQwMH0.xyz
+        userId:
+          type: string
+          description: Normalized user ID (lowercase)
+          example: user01
+      description: Response containing JWT token and normalized user ID
+
+    CreateUrlRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: The original URL to be shortened
+          example: https://example.com/very/long/url/path?param=value&another=param
+      description: Request to create or retrieve a short URL
+
+    CreateUrlResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          pattern: '^[a-z0-9]{7}$'
+          description: 7-character short URL code
+          example: abc123d
+        shortUrl:
+          type: string
+          format: uri
+          description: Complete short URL
+          example: http://localhost/abc123d
+        url:
+          type: string
+          format: uri
+          description: Original URL that was shortened
+          example: https://example.com/very/long/url
+        createdAt:
+          type: string
+          format: date-time
+          description: When the URL was first created
+          example: "2023-10-05T12:00:00Z"
+        existed:
+          type: boolean
+          description: Whether the URL already existed (true) or was newly created (false)
+          example: false
+      description: Response containing short URL details
+
+    UrlListResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          pattern: '^[a-z0-9]{7}$'
+          description: 7-character short URL code
+          example: abc123d
+        shortUrl:
+          type: string
+          format: uri
+          description: Complete short URL
+          example: http://localhost/abc123d
+        url:
+          type: string
+          format: uri
+          description: Original URL
+          example: https://example.com/original-url
+        createdAt:
+          type: string
+          format: date-time
+          description: When the association was created for this user
+          example: "2023-10-05T12:00:00Z"
+      description: URL list item for user's URLs
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, failed]
+          description: Overall system health status
+          example: ok
+        checks:
+          type: object
+          properties:
+            mysql:
+              type: string
+              enum: [ok, failed]
+              description: MySQL database connection status
+              example: ok
+            redis:
+              type: string
+              enum: [ok, failed]
+              description: Redis cache connection status
+              example: ok
+          description: Individual component health checks
+      description: System health check response
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type or category
+          example: Validation failed
+        message:
+          type: string
+          description: Detailed error message
+          example: userId must be 6 alphanumeric characters
+        code:
+          type: string
+          description: Optional error code for programmatic handling
+          example: VALIDATION_ERROR
+      description: Standard error response format
+
+tags:
+  - name: Authentication
+    description: JWT token generation for API access
+  - name: URL Management
+    description: Create, retrieve, and manage shortened URLs
+  - name: URL Redirect
+    description: Redirect short URLs to their original destinations
+  - name: Health Check
+    description: System health monitoring endpoints
