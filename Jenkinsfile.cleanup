@@ -1,0 +1,84 @@
+pipeline {
+    agent any
+
+    parameters {
+        booleanParam(
+            name: 'REMOVE_VOLUMES',
+            defaultValue: true,
+            description: 'Remove Docker volumes (destroys database data)'
+        )
+        booleanParam(
+            name: 'FORCE_CLEANUP',
+            defaultValue: false,
+            description: 'Force remove containers even if they are running'
+        )
+    }
+
+    stages {
+        stage('Cleanup TinyURL Services') {
+            steps {
+                script {
+                    // Load shared configuration
+                    def props = readProperties file: 'jenkins.properties'
+                    env.GLOBAL_NETWORK = props.GLOBAL_NETWORK
+                    env.MYSQL_CONTAINER = props.MYSQL_CONTAINER
+                    env.REDIS_CONTAINER = props.REDIS_CONTAINER
+                    env.BACKEND_CONTAINER = props.BACKEND_CONTAINER
+                    env.FRONTEND_CONTAINER = props.FRONTEND_CONTAINER
+
+                    echo "🧹 Cleaning up ALL TinyURL services (ignoring health status)..."
+
+                    // Always force stop all containers first
+                    sh '''
+                        echo "🛑 Force stopping all TinyURL containers..."
+                        docker kill ${MYSQL_CONTAINER} ${REDIS_CONTAINER} ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
+                        docker rm -f ${MYSQL_CONTAINER} ${REDIS_CONTAINER} ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || true
+                    '''
+
+                    if (params.REMOVE_VOLUMES) {
+                        sh '''
+                            echo "🗑️ Removing Docker volumes..."
+                            docker volume rm mysql_data redis_data 2>/dev/null || echo "Volumes already removed or don't exist"
+                        '''
+                    } else {
+                        echo "🛑 Preserving Docker volumes as requested"
+                    }
+
+                    if (params.FORCE_CLEANUP) {
+                        sh '''
+                            echo "💥 Additional force cleanup..."
+
+                            # Remove any containers with tinyurl in the name
+                            docker ps -a --filter name=tinyurl --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
+
+                            # Remove global network only (no docker-compose networks used)
+                            docker network rm ${GLOBAL_NETWORK} 2>/dev/null || true
+
+                            # Remove any tinyurl images (optional - commented out by default)
+                            # docker images --filter reference="tinyurl*" --format "{{.ID}}" | xargs -r docker rmi -f 2>/dev/null || true
+                        '''
+                    }
+
+                    sh '''
+                        echo "🧽 Cleaning up unused Docker resources..."
+                        docker system prune -f || true
+
+                        echo "📊 Docker status after cleanup:"
+                        docker ps -a --filter name=tinyurl || echo "No TinyURL containers found"
+                        echo "Networks:"
+                        docker network ls | grep tinyurl || echo "No TinyURL networks found"
+                    '''
+
+                    echo "✅ Complete cleanup finished!"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '🎯 TinyURL services have been cleaned up'
+            echo '▶️ You can now run the main pipeline again'
+        }
+    }
+}
