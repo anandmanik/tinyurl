@@ -18,34 +18,53 @@ pipeline {
         stage('Cleanup TinyURL Services') {
             steps {
                 script {
-                    echo "🧹 Cleaning up TinyURL services..."
+                    echo "🧹 Cleaning up ALL TinyURL services (ignoring health status)..."
+
+                    // Always force stop all containers first
+                    sh '''
+                        echo "🛑 Force stopping all TinyURL containers..."
+                        docker kill tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                        docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                    '''
 
                     if (params.REMOVE_VOLUMES) {
                         sh '''
                             echo "🗑️ Stopping services and removing volumes..."
-                            docker-compose down -v || true
+                            docker-compose down -v --remove-orphans || true
                         '''
                     } else {
                         sh '''
                             echo "🛑 Stopping services but preserving volumes..."
-                            docker-compose down || true
+                            docker-compose down --remove-orphans || true
                         '''
                     }
 
                     if (params.FORCE_CLEANUP) {
                         sh '''
-                            echo "💥 Force removing containers..."
-                            docker kill tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
-                            docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                            echo "💥 Additional force cleanup..."
+
+                            # Remove any containers with tinyurl in the name
+                            docker ps -a --filter name=tinyurl --format "{{.ID}}" | xargs -r docker rm -f 2>/dev/null || true
+
+                            # Remove the network
+                            docker network rm tinyurl_tinyurl-network 2>/dev/null || true
+
+                            # Remove any tinyurl images (optional - commented out by default)
+                            # docker images --filter reference="tinyurl*" --format "{{.ID}}" | xargs -r docker rmi -f 2>/dev/null || true
                         '''
                     }
 
                     sh '''
                         echo "🧽 Cleaning up unused Docker resources..."
                         docker system prune -f || true
+
+                        echo "📊 Docker status after cleanup:"
+                        docker ps -a --filter name=tinyurl || echo "No TinyURL containers found"
+                        echo "Networks:"
+                        docker network ls | grep tinyurl || echo "No TinyURL networks found"
                     '''
 
-                    echo "✅ Cleanup completed!"
+                    echo "✅ Complete cleanup finished!"
                 }
             }
         }
