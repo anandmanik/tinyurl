@@ -23,11 +23,25 @@ pipeline {
 
                     // Load shared configuration
                     def props = readProperties file: 'jenkins.properties'
+
+                    // Container and network configuration
                     env.GLOBAL_NETWORK = props.GLOBAL_NETWORK
                     env.MYSQL_CONTAINER = props.MYSQL_CONTAINER
                     env.REDIS_CONTAINER = props.REDIS_CONTAINER
                     env.BACKEND_CONTAINER = props.BACKEND_CONTAINER
                     env.FRONTEND_CONTAINER = props.FRONTEND_CONTAINER
+
+                    // Database configuration
+                    env.MYSQL_USER = props.MYSQL_USER
+                    env.MYSQL_PASSWORD = props.MYSQL_PASSWORD
+                    env.MYSQL_DATABASE = props.MYSQL_DATABASE
+
+                    // Application configuration
+                    env.API_PORT = props.API_PORT
+                    env.FRONTEND_PORT = props.FRONTEND_PORT
+                    env.JWT_SECRET = props.JWT_SECRET
+                    env.BASE_URL = props.BASE_URL
+                    env.SPRING_PROFILE = props.SPRING_PROFILE
 
                     // Verify Jenkins environment and create cache directories
                     sh '''
@@ -94,10 +108,10 @@ pipeline {
 
                             # Start MySQL and Redis directly on global network
                             docker run -d --name ${MYSQL_CONTAINER} --network ${GLOBAL_NETWORK} \
-                                -e MYSQL_ROOT_PASSWORD=admin \
-                                -e MYSQL_DATABASE=tinyurl \
-                                -e MYSQL_USER=tinyurl \
-                                -e MYSQL_PASSWORD=tinyurl \
+                                -e MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD} \
+                                -e MYSQL_DATABASE=${MYSQL_DATABASE} \
+                                -e MYSQL_USER=${MYSQL_USER} \
+                                -e MYSQL_PASSWORD=${MYSQL_PASSWORD} \
                                 -p 3306:3306 \
                                 -v mysql_data:/var/lib/mysql \
                                 --health-cmd="mysqladmin ping -h localhost" \
@@ -237,7 +251,7 @@ pipeline {
                         # Wait for MySQL to be ready for connections
                         echo "⏳ Waiting for MySQL to accept connections..."
                         for i in {1..30}; do
-                            if docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u root -padmin -e "SELECT 1;" 2>/dev/null; then
+                            if docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} -e "SELECT 1;" 2>/dev/null; then
                                 echo "✅ MySQL is ready for connections!"
                                 break
                             else
@@ -248,7 +262,7 @@ pipeline {
 
                         # Verify tinyurl database exists
                         echo "🗄️ Verifying tinyurl database exists..."
-                        docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u root -padmin -e "USE tinyurl; SELECT 'Database verified' as status;" 2>/dev/null || {
+                        docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} -e "USE ${MYSQL_DATABASE}; SELECT 'Database verified' as status;" 2>/dev/null || {
                             echo "⚠️ Database verification failed - but continuing (might be first run)"
                         }
 
@@ -273,20 +287,21 @@ pipeline {
                         # Start backend and frontend on global network
                         echo "🚀 Starting backend container..."
                         docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
-                            -e SPRING_PROFILES_ACTIVE=docker \
-                            -e SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_CONTAINER}:3306/tinyurl \
-                            -e SPRING_DATASOURCE_USERNAME=root \
-                            -e SPRING_DATASOURCE_PASSWORD=admin \
+                            -e SPRING_PROFILES_ACTIVE=${SPRING_PROFILE} \
+                            -e API_PORT=${API_PORT} \
+                            -e MYSQL_URL=${MYSQL_CONTAINER}:3306 \
+                            -e MYSQL_USER=${MYSQL_USER} \
+                            -e MYSQL_PASSWORD=${MYSQL_PASSWORD} \
                             -e REDIS_URL=redis://${REDIS_CONTAINER}:6379 \
-                            -e JWT_SECRET=1fe2275ec12ed522e57b743c64facf12 \
-                            -e BASE_URL=http://localhost \
-                            -p 8080:8080 \
+                            -e JWT_SECRET=${JWT_SECRET} \
+                            -e BASE_URL=${BASE_URL} \
+                            -p ${API_PORT}:${API_PORT} \
                             ${BACKEND_IMAGE}:${BUILD_NUMBER} || echo "Backend container already exists"
 
                         echo "🚀 Starting frontend container..."
                         docker run -d --name ${FRONTEND_CONTAINER} --network ${GLOBAL_NETWORK} \
-                            -e REACT_APP_API_URL=http://localhost:8080 \
-                            -p 3000:80 \
+                            -e REACT_APP_API_URL=${BASE_URL}:${API_PORT} \
+                            -p ${FRONTEND_PORT}:80 \
                             ${FRONTEND_IMAGE}:${BUILD_NUMBER} || echo "Frontend container already exists"
 
                         # Wait for backend to start and show logs for debugging
@@ -299,7 +314,7 @@ pipeline {
                         # Check if backend is responding
                         echo "🏥 Health check..."
                         for i in {1..6}; do
-                            if curl -f http://localhost:8080/api/healthz 2>/dev/null; then
+                            if curl -f ${BASE_URL}:${API_PORT}/api/healthz 2>/dev/null; then
                                 echo "✅ Backend is healthy!"
                                 break
                             else
@@ -374,8 +389,8 @@ pipeline {
 
                         # Health check
                         sleep 15
-                        curl -f http://localhost:8080/api/healthz || exit 1
-                        curl -f http://localhost:3000/ || exit 1
+                        curl -f ${BASE_URL}:${API_PORT}/api/healthz || exit 1
+                        curl -f ${BASE_URL}:${FRONTEND_PORT}/ || exit 1
                     '''
                 }
             }
@@ -386,8 +401,8 @@ pipeline {
         always {
             echo '✅ Pipeline completed - Services are still running for manual verification'
             echo '🔗 Access your services at:'
-            echo '   • Frontend: http://localhost:3000'
-            echo '   • Backend: http://localhost:8080'
+            echo "   • Frontend: ${env.BASE_URL}:${env.FRONTEND_PORT}"
+            echo "   • Backend: ${env.BASE_URL}:${env.API_PORT}"
             echo '   • MySQL: localhost:3306'
             echo '   • Redis: localhost:6379'
             echo ''
