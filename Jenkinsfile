@@ -28,6 +28,9 @@ pipeline {
             steps {
                 script {
                     sh '''
+                        # Clean up any existing containers
+                        docker-compose down -v || true
+
                         # Start MySQL and Redis for tests
                         docker-compose up -d mysql redis
 
@@ -90,7 +93,7 @@ pipeline {
                 stage('Frontend Pipeline') {
                     steps {
                         script {
-                            docker.image('node:18-alpine').inside('-v /var/run/docker.sock:/var/run/docker.sock') {
+                            docker.image('node:18-alpine').inside('-v /var/run/docker.sock:/var/run/docker.sock --network tinyurl_tinyurl-network') {
                                 sh '''
                                     cd tinyurl-frontend
                                     # Install dependencies
@@ -133,6 +136,9 @@ pipeline {
             steps {
                 script {
                     sh '''
+                        # Clean up any existing containers
+                        docker-compose down -v || true
+
                         # Start services with existing docker-compose.yml
                         docker-compose up -d
 
@@ -198,6 +204,9 @@ pipeline {
             steps {
                 script {
                     sh '''
+                        # Clean up any existing containers
+                        docker-compose down -v || true
+
                         # Deploy using existing docker-compose.yml
                         docker-compose up -d
 
