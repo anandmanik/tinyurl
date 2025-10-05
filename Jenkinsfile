@@ -28,14 +28,15 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        # Clean up any existing containers
-                        docker-compose down -v || true
+                        # Stop containers but preserve volumes for faster startup
+                        docker-compose down || true
 
-                        # Force remove specific containers if they exist
-                        docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend || true
+                        # Force kill and remove specific containers if they exist
+                        docker kill tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
+                        docker rm -f tinyurl-mysql tinyurl-redis tinyurl-backend tinyurl-frontend 2>/dev/null || true
 
-                        # Remove any conflicting networks
-                        docker network rm tinyurl_tinyurl-network || true
+                        # Give time for socket cleanup
+                        sleep 3
 
                         # Start MySQL and Redis for tests
                         docker-compose up -d mysql redis
