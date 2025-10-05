@@ -28,6 +28,32 @@ pipeline {
                     env.REDIS_CONTAINER = props.REDIS_CONTAINER
                     env.BACKEND_CONTAINER = props.BACKEND_CONTAINER
                     env.FRONTEND_CONTAINER = props.FRONTEND_CONTAINER
+
+                    // Verify Jenkins environment and create cache directories
+                    sh '''
+                        echo "🔍 Jenkins environment info:"
+                        echo "JENKINS_HOME: ${JENKINS_HOME}"
+                        echo "Current user: $(whoami)"
+                        echo "Home directory: ${HOME}"
+
+                        # Use JENKINS_HOME if available, otherwise use a safe default
+                        CACHE_BASE_DIR="${JENKINS_HOME:-/var/jenkins_home}"
+                        echo "Using cache base directory: $CACHE_BASE_DIR"
+
+                        # Create cache directories
+                        mkdir -p "$CACHE_BASE_DIR/.m2/repository"
+                        mkdir -p "$CACHE_BASE_DIR/.npm"
+
+                        # Set proper permissions
+                        chmod 755 "$CACHE_BASE_DIR/.m2" "$CACHE_BASE_DIR/.npm" 2>/dev/null || true
+
+                        echo "✅ Cache directories created at:"
+                        echo "  Maven: $CACHE_BASE_DIR/.m2"
+                        echo "  NPM: $CACHE_BASE_DIR/.npm"
+
+                        # Store the cache directory for later use
+                        echo "$CACHE_BASE_DIR" > /tmp/jenkins_cache_base
+                    '''
                 }
             }
         }
@@ -120,7 +146,8 @@ pipeline {
                 stage('Backend Pipeline') {
                     steps {
                         script {
-                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK}") {
+                            def cacheBaseDir = sh(script: 'cat /tmp/jenkins_cache_base', returnStdout: true).trim()
+                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v ${cacheBaseDir}/.m2:/root/.m2") {
                                 sh '''
                                     cd tinyurl-api
                                     # Build
@@ -153,10 +180,8 @@ pipeline {
                 stage('Frontend Pipeline') {
                     steps {
                         script {
-                            // Get the actual network name created by docker-compose
-                            def networkName = sh(script: 'docker network ls --filter name=tinyurl --format "{{.Name}}" | head -1', returnStdout: true).trim()
-
-                            docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK}") {
+                            def cacheBaseDir = sh(script: 'cat /tmp/jenkins_cache_base', returnStdout: true).trim()
+                            docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v ${cacheBaseDir}/.npm:/root/.npm") {
                                 sh '''
                                     cd tinyurl-frontend
                                     # Install dependencies
@@ -199,7 +224,35 @@ pipeline {
             steps {
                 script {
                     sh '''
+                        # Verify MySQL and Redis are running and healthy
+                        echo "🔍 Checking database connectivity before starting backend..."
+
+                        docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent || {
+                            echo "❌ MySQL is not responding! Starting it..."
+                            docker start ${MYSQL_CONTAINER} || echo "MySQL container issue"
+                            sleep 10
+                        }
+
+                        docker exec ${REDIS_CONTAINER} redis-cli ping | grep -q PONG || {
+                            echo "❌ Redis is not responding! Starting it..."
+                            docker start ${REDIS_CONTAINER} || echo "Redis container issue"
+                            sleep 5
+                        }
+
+                        # Test network connectivity from a temporary container
+                        echo "🌐 Testing network connectivity..."
+                        docker run --rm --network ${GLOBAL_NETWORK} alpine:latest sh -c "
+                            ping -c 1 ${MYSQL_CONTAINER} && echo 'MySQL reachable' || echo 'MySQL unreachable'
+                            ping -c 1 ${REDIS_CONTAINER} && echo 'Redis reachable' || echo 'Redis unreachable'
+                        "
+
+                        # Clean up any existing backend/frontend containers
+                        echo "🧹 Cleaning up existing application containers..."
+                        docker kill ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || echo "No existing containers to kill"
+                        docker rm -f ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || echo "No existing containers to remove"
+
                         # Start backend and frontend on global network
+                        echo "🚀 Starting backend container..."
                         docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
                             -e SPRING_PROFILES_ACTIVE=docker \
                             -e SPRING_DATASOURCE_URL=jdbc:mysql://${MYSQL_CONTAINER}:3306/tinyurl \
@@ -211,15 +264,33 @@ pipeline {
                             -p 8080:8080 \
                             ${BACKEND_IMAGE}:${BUILD_NUMBER} || echo "Backend container already exists"
 
+                        echo "🚀 Starting frontend container..."
                         docker run -d --name ${FRONTEND_CONTAINER} --network ${GLOBAL_NETWORK} \
                             -e REACT_APP_API_URL=http://localhost:8080 \
                             -p 3000:80 \
                             ${FRONTEND_IMAGE}:${BUILD_NUMBER} || echo "Frontend container already exists"
 
-                        # Wait for services to be ready
-                        sleep 30
+                        # Wait for backend to start and show logs for debugging
+                        echo "⏳ Waiting for backend to start..."
+                        sleep 15
+
+                        echo "📋 Backend container logs:"
+                        docker logs --tail 50 ${BACKEND_CONTAINER} || echo "Could not get backend logs"
+
+                        # Check if backend is responding
+                        echo "🏥 Health check..."
+                        for i in {1..6}; do
+                            if curl -f http://localhost:8080/api/healthz 2>/dev/null; then
+                                echo "✅ Backend is healthy!"
+                                break
+                            else
+                                echo "⏳ Attempt $i/6: Backend not ready, waiting..."
+                                sleep 10
+                            fi
+                        done
 
                         # Run integration tests
+                        echo "🧪 Running integration tests..."
                         docker exec ${BACKEND_CONTAINER} mvn test -Dtest=**/*IntegrationTest
                     '''
                 }
