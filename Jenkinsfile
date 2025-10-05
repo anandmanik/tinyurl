@@ -227,10 +227,29 @@ pipeline {
                         # Verify MySQL and Redis are running and healthy
                         echo "🔍 Checking database connectivity before starting backend..."
 
-                        docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent || {
+                        # Check if MySQL container is running
+                        if ! docker exec ${MYSQL_CONTAINER} mysqladmin ping -h localhost --silent 2>/dev/null; then
                             echo "❌ MySQL is not responding! Starting it..."
                             docker start ${MYSQL_CONTAINER} || echo "MySQL container issue"
                             sleep 10
+                        fi
+
+                        # Wait for MySQL to be ready for connections
+                        echo "⏳ Waiting for MySQL to accept connections..."
+                        for i in {1..30}; do
+                            if docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u root -padmin -e "SELECT 1;" 2>/dev/null; then
+                                echo "✅ MySQL is ready for connections!"
+                                break
+                            else
+                                echo "   Attempt $i/30: MySQL not ready, waiting 2 seconds..."
+                                sleep 2
+                            fi
+                        done
+
+                        # Verify tinyurl database exists
+                        echo "🗄️ Verifying tinyurl database exists..."
+                        docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u root -padmin -e "USE tinyurl; SELECT 'Database verified' as status;" 2>/dev/null || {
+                            echo "⚠️ Database verification failed - but continuing (might be first run)"
                         }
 
                         docker exec ${REDIS_CONTAINER} redis-cli ping | grep -q PONG || {
