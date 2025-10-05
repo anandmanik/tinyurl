@@ -43,6 +43,15 @@ pipeline {
                     env.BASE_URL = props.BASE_URL
                     env.SPRING_PROFILE = props.SPRING_PROFILE
 
+                    // Logging configuration
+                    env.LOGGING_LEVEL_ROOT = props.LOGGING_LEVEL_ROOT
+                    env.LOGGING_LEVEL_HIKARI = props.LOGGING_LEVEL_HIKARI
+                    env.LOGGING_LEVEL_JDBC = props.LOGGING_LEVEL_JDBC
+                    env.LOGGING_LEVEL_AUTOCONFIGURE = props.LOGGING_LEVEL_AUTOCONFIGURE
+                    env.LOGGING_LEVEL_FLYWAY = props.LOGGING_LEVEL_FLYWAY
+                    env.LOGGING_LEVEL_HIBERNATE_SQL = props.LOGGING_LEVEL_HIBERNATE_SQL
+                    env.LOGGING_LEVEL_HIBERNATE_TYPE = props.LOGGING_LEVEL_HIBERNATE_TYPE
+
                     // Verify Jenkins environment and create cache directories
                     sh '''
                         echo "🔍 Jenkins environment info:"
@@ -285,7 +294,37 @@ pipeline {
                         docker rm -f ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || echo "No existing containers to remove"
 
                         # Start backend and frontend on global network
-                        echo "🚀 Starting backend container..."
+                        echo "🚀 Starting backend container with detailed logging..."
+
+                        # Log network and connection details before starting backend
+                        echo "📋 Network and Connection Details:"
+                        echo "  Global Network: ${GLOBAL_NETWORK}"
+                        echo "  MySQL Container: ${MYSQL_CONTAINER}"
+                        echo "  Redis Container: ${REDIS_CONTAINER}"
+                        echo "  MySQL URL: ${MYSQL_CONTAINER}:3306"
+                        echo "  Redis URL: redis://${REDIS_CONTAINER}:6379"
+                        echo "  MySQL User: ${MYSQL_USER}"
+                        echo "  Spring Profile: ${SPRING_PROFILE}"
+
+                        # Verify network connectivity one more time before backend start
+                        echo "🔍 Final network connectivity verification:"
+                        docker run --rm --network ${GLOBAL_NETWORK} alpine:latest sh -c "
+                            echo 'Testing DNS resolution:'
+                            nslookup ${MYSQL_CONTAINER} || echo 'DNS lookup failed'
+                            nslookup ${REDIS_CONTAINER} || echo 'DNS lookup failed'
+                            echo 'Testing network connectivity:'
+                            ping -c 1 ${MYSQL_CONTAINER} && echo 'MySQL ping: SUCCESS' || echo 'MySQL ping: FAILED'
+                            ping -c 1 ${REDIS_CONTAINER} && echo 'Redis ping: SUCCESS' || echo 'Redis ping: FAILED'
+                        "
+
+                        # Test MySQL connection with exact same credentials backend will use
+                        echo "🗄️ Testing MySQL connection with backend credentials:"
+                        docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} --connect-timeout=10 -e "
+                            SELECT 'MySQL connection test SUCCESSFUL' as status;
+                            SHOW DATABASES;
+                            SELECT USER(), DATABASE(), CONNECTION_ID();
+                        " || echo "❌ MySQL connection test FAILED"
+
                         docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
                             -e SPRING_PROFILES_ACTIVE=${SPRING_PROFILE} \
                             -e API_PORT=${API_PORT} \
@@ -295,8 +334,24 @@ pipeline {
                             -e REDIS_URL=redis://${REDIS_CONTAINER}:6379 \
                             -e JWT_SECRET=${JWT_SECRET} \
                             -e BASE_URL=${BASE_URL} \
+                            -e LOGGING_LEVEL_ROOT=${LOGGING_LEVEL_ROOT} \
+                            -e LOGGING_LEVEL_COM_ZAXXER_HIKARI=${LOGGING_LEVEL_HIKARI} \
+                            -e LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_JDBC=${LOGGING_LEVEL_JDBC} \
+                            -e LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_BOOT_AUTOCONFIGURE=${LOGGING_LEVEL_AUTOCONFIGURE} \
+                            -e LOGGING_LEVEL_ORG_FLYWAYDB=${LOGGING_LEVEL_FLYWAY} \
+                            -e LOGGING_LEVEL_ORG_HIBERNATE_SQL=${LOGGING_LEVEL_HIBERNATE_SQL} \
+                            -e LOGGING_LEVEL_ORG_HIBERNATE_TYPE=${LOGGING_LEVEL_HIBERNATE_TYPE} \
+                            -e LOGGING_PATTERN_CONSOLE='%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n' \
                             -p ${API_PORT}:${API_PORT} \
                             ${BACKEND_IMAGE}:${BUILD_NUMBER} || echo "Backend container already exists"
+
+                        # Immediately check if backend container started successfully
+                        echo "📊 Backend container status after start:"
+                        docker ps --filter name=${BACKEND_CONTAINER} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+
+                        # Show backend container network details
+                        echo "🌐 Backend container network inspection:"
+                        docker inspect ${BACKEND_CONTAINER} --format='{{json .NetworkSettings.Networks}}' | jq . || echo "Could not inspect network settings"
 
                         echo "🚀 Starting frontend container..."
                         docker run -d --name ${FRONTEND_CONTAINER} --network ${GLOBAL_NETWORK} \
@@ -306,10 +361,104 @@ pipeline {
 
                         # Wait for backend to start and show logs for debugging
                         echo "⏳ Waiting for backend to start..."
-                        sleep 15
 
-                        echo "📋 Backend container logs:"
-                        docker logs --tail 50 ${BACKEND_CONTAINER} || echo "Could not get backend logs"
+                        # Show backend environment variables for debugging
+                        echo "🔧 Backend container environment variables:"
+                        docker exec ${BACKEND_CONTAINER} env | grep -E "(SPRING|MYSQL|REDIS|API|JWT|BASE)" | sort || echo "Could not get environment variables"
+
+                        # Show the exact MySQL connection string that Spring Boot will construct
+                        echo "🔗 Expected Spring Boot MySQL connection string:"
+                        echo "   jdbc:mysql://${MYSQL_CONTAINER}:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+                        echo "   User: ${MYSQL_USER}"
+                        echo "   Password: ${MYSQL_PASSWORD}"
+
+                        # Start real-time log monitoring in background
+                        echo "📡 Starting real-time log monitoring..."
+                        docker logs -f ${BACKEND_CONTAINER} > /tmp/backend_logs.log 2>&1 &
+                        LOG_PID=$!
+
+                        # Wait and monitor backend startup with real-time log analysis
+                        for i in {1..12}; do
+                            echo "   ⏱️ Monitoring startup ${i}/12 (${i}5 seconds)..."
+                            sleep 5
+
+                            # Check if container is still running
+                            if ! docker ps --filter name=${BACKEND_CONTAINER} --format "{{.Names}}" | grep -q ${BACKEND_CONTAINER}; then
+                                echo "❌ Backend container has stopped!"
+                                break
+                            fi
+
+                            # Check for specific error patterns in real-time logs
+                            if grep -q "Communications link failure" /tmp/backend_logs.log 2>/dev/null; then
+                                echo "🚨 DETECTED: Communications link failure error!"
+                                break
+                            fi
+
+                            if grep -q "HikariPool.*Exception during pool initialization" /tmp/backend_logs.log 2>/dev/null; then
+                                echo "🚨 DETECTED: HikariCP pool initialization failure!"
+                                break
+                            fi
+
+                            if grep -q "Started.*Application" /tmp/backend_logs.log 2>/dev/null; then
+                                echo "✅ DETECTED: Application started successfully!"
+                                break
+                            fi
+
+                            echo "     📊 Container still running, checking for errors..."
+                            tail -5 /tmp/backend_logs.log 2>/dev/null | grep -i "error\\|exception\\|failed" | head -2 || echo "     No obvious errors in recent logs"
+                        done
+
+                        # Stop background log monitoring
+                        kill $LOG_PID 2>/dev/null || true
+
+                        echo "📋 Backend container logs (last 100 lines):"
+                        docker logs --tail 100 ${BACKEND_CONTAINER} || echo "Could not get backend logs"
+
+                        echo "🔍 Analyzing application logs for specific issues:"
+
+                        # Extract HikariCP configuration
+                        echo "🏊 HikariCP Configuration:"
+                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "hikari" | head -10 || echo "No HikariCP logs found"
+
+                        # Extract database connection attempts
+                        echo "🔗 Database Connection Attempts:"
+                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "mysql\\|connection\\|jdbc" | head -10 || echo "No database connection logs found"
+
+                        # Extract Flyway migration logs
+                        echo "🛫 Flyway Migration Logs:"
+                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "flyway" | head -10 || echo "No Flyway logs found"
+
+                        # Extract Spring Boot autoconfiguration logs
+                        echo "🚀 Spring Boot Autoconfiguration:"
+                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "autoconfigur" | head -5 || echo "No autoconfiguration logs found"
+
+                        # Extract any stack traces
+                        echo "💥 Error Stack Traces:"
+                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -A 5 -B 5 "Exception\\|Error" | head -20 || echo "No error stack traces found"
+
+                        # Show full startup logs
+                        echo "📄 Complete real-time logs captured during startup:"
+                        cat /tmp/backend_logs.log 2>/dev/null | head -200 || echo "No real-time logs available"
+
+                        # Test connectivity FROM the backend container TO MySQL
+                        echo "🔗 Testing MySQL connectivity FROM backend container:"
+                        docker exec ${BACKEND_CONTAINER} sh -c "
+                            echo 'Testing DNS resolution from backend:'
+                            nslookup ${MYSQL_CONTAINER} || echo 'Backend DNS lookup failed'
+                            echo 'Testing ping from backend:'
+                            ping -c 1 ${MYSQL_CONTAINER} && echo 'Backend to MySQL ping: SUCCESS' || echo 'Backend to MySQL ping: FAILED'
+                            echo 'Testing MySQL port 3306 connectivity:'
+                            timeout 5 bash -c '</dev/tcp/${MYSQL_CONTAINER}/3306' && echo 'MySQL port 3306: OPEN' || echo 'MySQL port 3306: CLOSED'
+                        " || echo "Could not test connectivity from backend container"
+
+                        # Try MySQL connection from backend container using same credentials
+                        echo "🗄️ Testing MySQL connection FROM backend container:"
+                        docker exec ${BACKEND_CONTAINER} sh -c "
+                            # Install mysql client if not available (for debugging)
+                            apt-get update && apt-get install -y mysql-client 2>/dev/null || echo 'Could not install mysql client'
+                        " || echo "Could not prepare MySQL client"
+
+                        docker exec ${BACKEND_CONTAINER} mysql -h ${MYSQL_CONTAINER} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} --connect-timeout=5 -e "SELECT 'Connection from backend container SUCCESSFUL' as status;" 2>/dev/null || echo "❌ MySQL connection from backend container FAILED"
 
                         # Check if backend is responding
                         echo "🏥 Health check..."
