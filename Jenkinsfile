@@ -149,8 +149,10 @@ pipeline {
                             docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v \${JENKINS_HOME}/.m2:/maven-cache -e MAVEN_OPTS='-Dmaven.repo.local=/maven-cache/repository'") {
                                 sh '''
                                     cd tinyurl-api
-                                    # Build
-                                    mvn clean compile -DskipTests
+                                    # Build - explicitly remove any cached config files
+                                    mvn clean
+                                    rm -rf target/classes/application-docker.properties 2>/dev/null || true
+                                    mvn compile -DskipTests
 
                                     # Test (with database available)
                                     mvn test
@@ -301,6 +303,14 @@ pipeline {
                             SELECT USER(), DATABASE(), CONNECTION_ID();
                         " || echo "❌ MySQL connection test FAILED"
 
+                        # Log exact environment variables being passed to backend
+                        echo "🔧 Environment variables being passed to backend:"
+                        echo "  SPRING_PROFILES_ACTIVE=${SPRING_PROFILE}"
+                        echo "  MYSQL_URL=${MYSQL_CONTAINER}:3306"
+                        echo "  MYSQL_USER=${MYSQL_USER}"
+                        echo "  MYSQL_PASSWORD=${MYSQL_PASSWORD}"
+                        echo "  REDIS_URL=redis://${REDIS_CONTAINER}:6379"
+
                         docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
                             -e SPRING_PROFILES_ACTIVE=${SPRING_PROFILE} \
                             -e API_PORT=${API_PORT} \
@@ -324,6 +334,11 @@ pipeline {
                         # Immediately check if backend container started successfully
                         echo "📊 Backend container status after start:"
                         docker ps --filter name=${BACKEND_CONTAINER} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+
+                        # Verify environment variables inside the container
+                        echo "🔍 Verifying environment variables inside backend container:"
+                        sleep 3
+                        docker exec ${BACKEND_CONTAINER} env | grep -E "MYSQL_URL|MYSQL_USER|MYSQL_PASSWORD|SPRING_PROFILES_ACTIVE" || echo "Environment variables check failed"
 
                         # Show backend container network details
                         echo "🌐 Backend container network inspection:"
