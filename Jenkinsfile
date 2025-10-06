@@ -149,10 +149,16 @@ pipeline {
                             docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v \${JENKINS_HOME}/.m2:/maven-cache -e MAVEN_OPTS='-Dmaven.repo.local=/maven-cache/repository'") {
                                 sh '''
                                     cd tinyurl-api
-                                    # Build - explicitly remove any cached config files
+                                    # Build - explicitly remove any cached config files and target directory
                                     mvn clean
-                                    rm -rf target/classes/application-docker.properties 2>/dev/null || true
+                                    rm -rf target 2>/dev/null || true
+
+                                    # Compile with clean state
                                     mvn compile -DskipTests
+
+                                    # Verify no stale config files exist
+                                    echo "Checking for stale configuration files:"
+                                    find target/classes -name "application-*.properties" | grep -v "application.properties" || echo "No stale config files found"
 
                                     # Test (with database available)
                                     mvn test
@@ -316,6 +322,7 @@ pipeline {
                         set -x
                         docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
                             -e SPRING_PROFILES_ACTIVE=${SPRING_PROFILE} \
+                            -e SPRING_PROFILES_INCLUDE="" \
                             -e API_PORT=${API_PORT} \
                             -e MYSQL_URL=${MYSQL_CONTAINER}:3306 \
                             -e MYSQL_USER=${MYSQL_USER} \
@@ -332,7 +339,8 @@ pipeline {
                             -e LOGGING_LEVEL_ORG_HIBERNATE_TYPE=${LOGGING_LEVEL_HIBERNATE_TYPE} \
                             -e LOGGING_PATTERN_CONSOLE='%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n' \
                             -p ${API_PORT}:${API_PORT} \
-                            ${BACKEND_IMAGE}:${BUILD_NUMBER} || echo "Backend container already exists"
+                            ${BACKEND_IMAGE}:${BUILD_NUMBER} \
+                            --spring.profiles.active=${SPRING_PROFILE} || echo "Backend container already exists"
                         set +x
 
                         # Immediately check if backend container started successfully
