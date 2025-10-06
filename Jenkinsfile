@@ -340,7 +340,10 @@ pipeline {
                             -e LOGGING_PATTERN_CONSOLE='%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n' \
                             -p ${API_PORT}:${API_PORT} \
                             ${BACKEND_IMAGE}:${BUILD_NUMBER} \
-                            --spring.profiles.active=${SPRING_PROFILE} || echo "Backend container already exists"
+                            --spring.profiles.active=${SPRING_PROFILE} \
+                            --spring.datasource.url=jdbc:mysql://${MYSQL_CONTAINER}:3306/tinyurl?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC \
+                            --spring.datasource.username=${MYSQL_USER} \
+                            --spring.datasource.password=${MYSQL_PASSWORD} || echo "Backend container already exists"
                         set +x
 
                         # Immediately check if backend container started successfully
