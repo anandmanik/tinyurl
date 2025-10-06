@@ -52,31 +52,6 @@ pipeline {
                     env.LOGGING_LEVEL_HIBERNATE_SQL = props.LOGGING_LEVEL_HIBERNATE_SQL
                     env.LOGGING_LEVEL_HIBERNATE_TYPE = props.LOGGING_LEVEL_HIBERNATE_TYPE
 
-                    // Verify Jenkins environment and create cache directories
-                    sh '''
-                        echo "🔍 Jenkins environment info:"
-                        echo "JENKINS_HOME: ${JENKINS_HOME}"
-                        echo "Current user: $(whoami)"
-                        echo "Home directory: ${HOME}"
-
-                        # Use JENKINS_HOME if available, otherwise use a safe default
-                        CACHE_BASE_DIR="${JENKINS_HOME:-/var/jenkins_home}"
-                        echo "Using cache base directory: $CACHE_BASE_DIR"
-
-                        # Create cache directories
-                        mkdir -p "$CACHE_BASE_DIR/.m2/repository"
-                        mkdir -p "$CACHE_BASE_DIR/.npm"
-
-                        # Set proper permissions
-                        chmod 755 "$CACHE_BASE_DIR/.m2" "$CACHE_BASE_DIR/.npm" 2>/dev/null || true
-
-                        echo "✅ Cache directories created at:"
-                        echo "  Maven: $CACHE_BASE_DIR/.m2"
-                        echo "  NPM: $CACHE_BASE_DIR/.npm"
-
-                        # Store the cache directory for later use
-                        echo "$CACHE_BASE_DIR" > /tmp/jenkins_cache_base
-                    '''
                 }
             }
         }
@@ -169,8 +144,9 @@ pipeline {
                 stage('Backend Pipeline') {
                     steps {
                         script {
-                            def cacheBaseDir = sh(script: 'cat /tmp/jenkins_cache_base', returnStdout: true).trim()
-                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v ${cacheBaseDir}/.m2:/root/.m2") {
+                            // Mount Jenkins home .m2 directory for Maven cache persistence
+                            // Using MAVEN_OPTS to ensure correct repository location
+                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v \${JENKINS_HOME}/.m2:/maven-cache -e MAVEN_OPTS='-Dmaven.repo.local=/maven-cache/repository'") {
                                 sh '''
                                     cd tinyurl-api
                                     # Build
@@ -203,8 +179,8 @@ pipeline {
                 stage('Frontend Pipeline') {
                     steps {
                         script {
-                            def cacheBaseDir = sh(script: 'cat /tmp/jenkins_cache_base', returnStdout: true).trim()
-                            docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v ${cacheBaseDir}/.npm:/root/.npm") {
+                            // Mount Jenkins home .npm directory for NPM cache persistence
+                            docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v \${JENKINS_HOME}/.npm:/root/.npm") {
                                 sh '''
                                     cd tinyurl-frontend
                                     # Install dependencies
