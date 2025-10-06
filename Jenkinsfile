@@ -311,6 +311,9 @@ pipeline {
                         echo "  MYSQL_PASSWORD=${MYSQL_PASSWORD}"
                         echo "  REDIS_URL=redis://${REDIS_CONTAINER}:6379"
 
+                        # Show the exact docker run command that will be executed
+                        echo "🐳 Executing docker run command:"
+                        set -x
                         docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
                             -e SPRING_PROFILES_ACTIVE=${SPRING_PROFILE} \
                             -e API_PORT=${API_PORT} \
@@ -330,6 +333,7 @@ pipeline {
                             -e LOGGING_PATTERN_CONSOLE='%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n' \
                             -p ${API_PORT}:${API_PORT} \
                             ${BACKEND_IMAGE}:${BUILD_NUMBER} || echo "Backend container already exists"
+                        set +x
 
                         # Immediately check if backend container started successfully
                         echo "📊 Backend container status after start:"
@@ -338,7 +342,15 @@ pipeline {
                         # Verify environment variables inside the container
                         echo "🔍 Verifying environment variables inside backend container:"
                         sleep 3
-                        docker exec ${BACKEND_CONTAINER} env | grep -E "MYSQL_URL|MYSQL_USER|MYSQL_PASSWORD|SPRING_PROFILES_ACTIVE" || echo "Environment variables check failed"
+                        docker exec ${BACKEND_CONTAINER} sh -c '
+                            echo "=== Environment Variables in Container ==="
+                            echo "MYSQL_URL=$MYSQL_URL"
+                            echo "MYSQL_USER=$MYSQL_USER"
+                            echo "MYSQL_PASSWORD=$MYSQL_PASSWORD"
+                            echo "REDIS_URL=$REDIS_URL"
+                            echo "SPRING_PROFILES_ACTIVE=$SPRING_PROFILES_ACTIVE"
+                            echo "============================================"
+                        ' || echo "Environment variables check failed"
 
                         # Show backend container network details
                         echo "🌐 Backend container network inspection:"
