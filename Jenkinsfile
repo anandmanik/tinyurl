@@ -226,13 +226,6 @@ pipeline {
         }
 
         stage('Integration Tests') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                    changeRequest()
-                }
-            }
             steps {
                 script {
                     sh '''
@@ -497,12 +490,6 @@ pipeline {
 
 
         stage('Deploy to Dev') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
             steps {
                 script {
                     sh '''
