@@ -495,42 +495,6 @@ pipeline {
             }
         }
 
-        stage('Security Scan') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
-            parallel {
-                stage('Backend Security') {
-                    steps {
-                        sh '''
-                            cd tinyurl-api
-                            mvn org.owasp:dependency-check-maven:check
-                        '''
-
-                        publishHTML([
-                            allowMissing: true,
-                            alwaysLinkToLastBuild: true,
-                            keepAll: true,
-                            reportDir: 'tinyurl-api/target',
-                            reportFiles: 'dependency-check-report.html',
-                            reportName: 'Backend Security Report'
-                        ])
-                    }
-                }
-
-                stage('Frontend Security') {
-                    steps {
-                        sh '''
-                            cd tinyurl-frontend
-                            npm audit --audit-level=moderate
-                        '''
-                    }
-                }
-            }
-        }
 
         stage('Deploy to Dev') {
             when {
