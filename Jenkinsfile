@@ -539,12 +539,64 @@ pipeline {
                     echo "✅ Pipeline completed successfully for main branch"
                     // Add notification logic here (Slack, email, etc.)
                 }
+
+                // Cleanup old images to prevent disk space issues
+                echo "🧹 Cleaning up old Docker images..."
+                try {
+                    sh """
+                        # Keep only the latest 3 builds of each image
+                        echo "Removing old ${BACKEND_IMAGE} images (keeping latest 3)..."
+                        docker images ${BACKEND_IMAGE} --format "{{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${BACKEND_IMAGE}:{} || true
+
+                        echo "Removing old ${FRONTEND_IMAGE} images (keeping latest 3)..."
+                        docker images ${FRONTEND_IMAGE} --format "{{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${FRONTEND_IMAGE}:{} || true
+
+                        # Remove dangling images
+                        echo "Removing dangling images..."
+                        docker image prune -f || true
+
+                        echo "✅ Image cleanup completed"
+                    """
+                } catch (Exception e) {
+                    echo "⚠️ Image cleanup failed but continuing: ${e.getMessage()}"
+                }
             }
         }
 
         failure {
             script {
                 echo "❌ Pipeline failed for branch: ${env.BRANCH_NAME}"
+
+                // Cleanup containers that were started during the build
+                echo "🧹 Cleaning up containers after build failure..."
+
+                try {
+                    sh """
+                        # Stop and remove backend container if it exists
+                        if docker ps -a --format '{{.Names}}' | grep -q "^${BACKEND_CONTAINER}\$"; then
+                            echo "Stopping backend container: ${BACKEND_CONTAINER}"
+                            docker stop ${BACKEND_CONTAINER} || true
+                            docker rm ${BACKEND_CONTAINER} || true
+                        fi
+
+                        # Stop and remove frontend container if it exists
+                        if docker ps -a --format '{{.Names}}' | grep -q "^${FRONTEND_CONTAINER}\$"; then
+                            echo "Stopping frontend container: ${FRONTEND_CONTAINER}"
+                            docker stop ${FRONTEND_CONTAINER} || true
+                            docker rm ${FRONTEND_CONTAINER} || true
+                        fi
+
+                        # Remove images created in this failed build
+                        echo "🗑️ Removing images from failed build ${BUILD_NUMBER}..."
+                        docker rmi ${BACKEND_IMAGE}:${BUILD_NUMBER} || true
+                        docker rmi ${FRONTEND_IMAGE}:${BUILD_NUMBER} || true
+
+                        echo "✅ Cleanup completed"
+                    """
+                } catch (Exception e) {
+                    echo "⚠️ Cleanup failed but continuing: ${e.getMessage()}"
+                }
+
                 // Add failure notification logic here
             }
         }

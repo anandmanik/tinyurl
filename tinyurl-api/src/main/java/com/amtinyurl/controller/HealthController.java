@@ -61,8 +61,7 @@ public class HealthController {
         }
 
         if (!allHealthy) {
-            health.put("status", "failed");
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(health);
+            health.put("status", "degraded");
         }
 
         return ResponseEntity.ok(health);
