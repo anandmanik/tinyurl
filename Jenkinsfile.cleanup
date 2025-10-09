@@ -20,11 +20,18 @@ pipeline {
                 script {
                     // Load shared configuration
                     def props = readProperties file: 'jenkins.properties'
+
+                    // Container and network configuration
                     env.GLOBAL_NETWORK = props.GLOBAL_NETWORK
                     env.MYSQL_CONTAINER = props.MYSQL_CONTAINER
                     env.REDIS_CONTAINER = props.REDIS_CONTAINER
                     env.BACKEND_CONTAINER = props.BACKEND_CONTAINER
                     env.FRONTEND_CONTAINER = props.FRONTEND_CONTAINER
+
+                    // Database configuration (for cleanup reference)
+                    env.MYSQL_USER = props.MYSQL_USER
+                    env.MYSQL_PASSWORD = props.MYSQL_PASSWORD
+                    env.MYSQL_DATABASE = props.MYSQL_DATABASE
 
                     echo "🧹 Cleaning up ALL TinyURL services (ignoring health status)..."
 
@@ -37,8 +44,18 @@ pipeline {
 
                     if (params.REMOVE_VOLUMES) {
                         sh '''
-                            echo "🗑️ Removing Docker volumes..."
-                            docker volume rm mysql_data redis_data 2>/dev/null || echo "Volumes already removed or don't exist"
+                            echo "🗑️ Removing Docker volumes and cache directories..."
+                            docker volume rm mysql_data redis_data 2>/dev/null || echo "Docker volumes already removed or don't exist"
+
+                            # Use JENKINS_HOME if available, otherwise use a safe default
+                            CACHE_BASE_DIR="${JENKINS_HOME:-/var/jenkins_home}"
+                            echo "Cleaning cache directories in: $CACHE_BASE_DIR"
+
+                            echo "🧹 Cleaning Maven and NPM cache directories..."
+                            rm -rf "$CACHE_BASE_DIR/.m2/repository"/* 2>/dev/null || echo "Maven cache already clean"
+                            rm -rf "$CACHE_BASE_DIR/.npm"/* 2>/dev/null || echo "NPM cache already clean"
+
+                            echo "✅ Cache cleanup completed"
                         '''
                     } else {
                         echo "🛑 Preserving Docker volumes as requested"
