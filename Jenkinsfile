@@ -522,7 +522,6 @@ pipeline {
 
     post {
         always {
-            echo '✅ Pipeline completed - Services are still running for manual verification'
             echo '🔗 Access your services at:'
             echo "   • Frontend: ${env.BASE_URL}:${env.FRONTEND_PORT}"
             echo "   • Backend: ${env.BASE_URL}:${env.API_PORT}"
@@ -530,11 +529,12 @@ pipeline {
             echo '   • Redis: localhost:6379'
             echo ''
             echo '🛑 To stop services manually, run: docker-compose down -v'
-            cleanWs()
         }
 
         success {
             script {
+                echo "✅ Pipeline completed successfully - Services are still running for manual verification"
+
                 if (env.BRANCH_NAME == 'main') {
                     echo "✅ Pipeline completed successfully for main branch"
                     // Add notification logic here (Slack, email, etc.)
@@ -560,6 +560,9 @@ pipeline {
                 } catch (Exception e) {
                     echo "⚠️ Image cleanup failed but continuing: ${e.getMessage()}"
                 }
+
+                // Clean workspace after successful completion
+                cleanWs()
             }
         }
 
