@@ -348,7 +348,7 @@ pipeline {
                             -e LOGGING_LEVEL_ORG_HIBERNATE_SQL=${LOGGING_LEVEL_HIBERNATE_SQL} \
                             -e LOGGING_LEVEL_ORG_HIBERNATE_TYPE=${LOGGING_LEVEL_HIBERNATE_TYPE} \
                             -e LOGGING_PATTERN_CONSOLE='%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n' \
-                            -p ${API_PORT}:8080 \
+                            -p ${API_PORT}:${API_PORT} \
                             ${BACKEND_IMAGE}:${BUILD_NUMBER} \
                             --spring.profiles.active=${SPRING_PROFILE} || echo "Backend container already exists"
                         set +x
