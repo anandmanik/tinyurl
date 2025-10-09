@@ -138,7 +138,7 @@
 - Allow all origins (wildcard)
 
 ### 13) Environment and Config
-- `API_PORT=8080`
+- `API_PORT=8082`
 - `FRONTEND_PORT=3000`
 - `MYSQL_URL=localhost:3306`
 - `MYSQL_USER=root`

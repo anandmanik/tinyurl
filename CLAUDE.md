@@ -24,7 +24,7 @@ This is a TinyURL service implementation with a Java Spring Boot backend and Rea
 ## Configuration
 
 System settings are managed via `env.properties`:
-- API_PORT=8080 (Spring Boot server)
+- API_PORT=8082 (Spring Boot server)
 - FRONTEND_PORT=3000 (React dev server)
 - MySQL connection settings
 - Redis connection URL
