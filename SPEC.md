@@ -150,10 +150,31 @@
   - Local dev: `https://localhost`
 
 ### 14) Deployment
-- **Docker**:
-  - Production Dockerfiles for API and frontend
-  - `docker-compose.yml` for local dev: API (Spring Boot), MySQL, Redis, React dev server
-- **Headers/Security**:
+
+#### Docker
+- **Production Dockerfiles**: Multi-stage builds for API and frontend
+- **docker-compose.yml**: Local development with API (Spring Boot), MySQL, Redis, React dev server
+- **Global network**: `tinyurl-global-network` for container communication
+- **Health checks**: MySQL, Redis, backend API, and frontend
+- **Persistent volumes**: MySQL data and Redis persistence
+
+#### CI/CD Pipeline (Jenkins)
+- **Multibranch pipeline** with GitHub integration using PAT authentication
+- **Docker-in-Docker builds** using Maven 3.9 and Node 18 containers
+- **Parallel builds**: Backend and frontend built simultaneously
+- **Dependency caching**: Persistent Maven (.m2) and NPM cache volumes
+- **Integration testing**: Database connectivity and health checks
+- **Service management**: Intelligent container reuse with health verification
+- **Image cleanup**: Automatic removal of old builds (keeps latest 3)
+- **Branch controls**: Dev branch builds can be paused/resumed
+- **Post-deployment**: Services remain running for manual verification
+
+#### Configuration Management
+- **jenkins.properties**: Centralized CI/CD configuration
+- **env.properties**: Local development defaults with environment variable overrides
+- **application.properties**: Spring Boot with `${VAR:default}` pattern for flexibility
+
+#### Headers/Security
 - Set HSTS on production domain
 - Return `Cache-Control: max-age=100, public` on 301 redirect
 

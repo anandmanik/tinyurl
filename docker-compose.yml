@@ -51,6 +51,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=1fe2275ec12ed522e57b743c64facf12
       - BASE_URL=http://localhost
+      - API_PORT=8082
     ports:
       - "8082:8082"
     depends_on:
