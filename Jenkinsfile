@@ -144,14 +144,8 @@ pipeline {
                 stage('Backend Pipeline') {
                     steps {
                         script {
-                            // Create persistent Maven cache directory
-                            sh '''
-                                mkdir -p /var/jenkins_home/.m2/repository
-                                chmod -R 755 /var/jenkins_home/.m2
-                            '''
-
                             // Mount Jenkins home .m2 directory for Maven cache persistence
-                            // Using explicit settings.xml and repository location
+                            // Jenkins home is already persisted via volume mount to host
                             docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v /var/jenkins_home/.m2:/root/.m2") {
                                 sh '''
                                     cd tinyurl-api
