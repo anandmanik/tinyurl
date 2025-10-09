@@ -36,11 +36,11 @@ RUN addgroup --system spring && adduser --system spring --ingroup spring
 USER spring:spring
 
 # Expose the port that the application runs on
-EXPOSE 8082
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8082/api/healthz || exit 1
+  CMD curl -f http://localhost:8080/api/healthz || exit 1
 
 # Run the application
 ENTRYPOINT ["java", "-Dspring.profiles.active=docker", "-jar", "/app/app.jar"]
