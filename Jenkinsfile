@@ -566,9 +566,15 @@ pipeline {
                         echo "Removing old ${FRONTEND_IMAGE} images (keeping latest 3)..."
                         docker images ${FRONTEND_IMAGE} --format "{{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${FRONTEND_IMAGE}:{} || true
 
-                        # Remove dangling images
+                        # Remove dangling and unused images
                         echo "Removing dangling images..."
                         docker image prune -f || true
+
+                        echo "Removing unused images (keeping last 24 hours)..."
+                        docker image prune -a --filter "until=24h" -f || true
+
+                        echo "Removing build cache..."
+                        docker builder prune -f || true
 
                         echo "✅ Image cleanup completed"
                     """
@@ -608,6 +614,10 @@ pipeline {
                         echo "🗑️ Removing images from failed build ${BUILD_NUMBER}..."
                         docker rmi ${BACKEND_IMAGE}:${BUILD_NUMBER} || true
                         docker rmi ${FRONTEND_IMAGE}:${BUILD_NUMBER} || true
+
+                        # Remove dangling images from failed build
+                        echo "🗑️ Removing dangling images from failed build..."
+                        docker image prune -f || true
 
                         echo "✅ Cleanup completed"
                     """
