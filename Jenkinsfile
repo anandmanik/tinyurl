@@ -566,9 +566,13 @@ pipeline {
                         echo "Removing old ${FRONTEND_IMAGE} images (keeping latest 3)..."
                         docker images ${FRONTEND_IMAGE} --format "{{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${FRONTEND_IMAGE}:{} || true
 
-                        # Remove dangling images
+                        # Remove dangling images only (safe - only removes <none> images)
                         echo "Removing dangling images..."
                         docker image prune -f || true
+
+                        # Remove old intermediate layers from tinyurl builds only
+                        echo "Cleaning up old tinyurl build layers..."
+                        docker images --filter "label=org.opencontainers.image.title=tinyurl*" --filter "dangling=true" -q | xargs -r docker rmi || true
 
                         echo "✅ Image cleanup completed"
                     """
@@ -608,6 +612,10 @@ pipeline {
                         echo "🗑️ Removing images from failed build ${BUILD_NUMBER}..."
                         docker rmi ${BACKEND_IMAGE}:${BUILD_NUMBER} || true
                         docker rmi ${FRONTEND_IMAGE}:${BUILD_NUMBER} || true
+
+                        # Remove dangling images from failed build
+                        echo "🗑️ Removing dangling images from failed build..."
+                        docker image prune -f || true
 
                         echo "✅ Cleanup completed"
                     """
