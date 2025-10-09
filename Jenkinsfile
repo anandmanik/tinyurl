@@ -144,32 +144,38 @@ pipeline {
                 stage('Backend Pipeline') {
                     steps {
                         script {
+                            // Create persistent Maven cache directory
+                            sh '''
+                                mkdir -p /var/jenkins_home/.m2/repository
+                                chmod -R 755 /var/jenkins_home/.m2
+                            '''
+
                             // Mount Jenkins home .m2 directory for Maven cache persistence
-                            // Using MAVEN_OPTS to ensure correct repository location
-                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v \${JENKINS_HOME}/.m2:/maven-cache -e MAVEN_OPTS='-Dmaven.repo.local=/maven-cache/repository'") {
+                            // Using explicit settings.xml and repository location
+                            docker.image('maven:3.9-eclipse-temurin-25').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v /var/jenkins_home/.m2:/root/.m2") {
                                 sh '''
                                     cd tinyurl-api
-                                    # Build - explicitly remove any cached config files and target directory
+
+                                    # Show Maven repository location
+                                    echo "📦 Maven repository: $(mvn help:evaluate -Dexpression=settings.localRepository -q -DforceStdout)"
+
+                                    # Clean and remove any cached config files
                                     mvn clean
                                     rm -rf target 2>/dev/null || true
 
-                                    # Compile with clean state
-                                    mvn compile -DskipTests
-
-                                    # Verify no stale config files exist
-                                    echo "Checking for stale configuration files:"
-                                    find target/classes -name "application-*.properties" | grep -v "application.properties" || echo "No stale config files found"
-
-                                    # Test (with database available) - pass environment variables
+                                    # Single Maven command: compile, test, and package in one go
                                     echo "🧪 Maven test environment variables:"
                                     echo "  MYSQL_URL=${MYSQL_CONTAINER}:3306"
                                     echo "  MYSQL_USER=${MYSQL_USER}"
                                     echo "  MYSQL_PASSWORD=${MYSQL_PASSWORD}"
                                     echo "  REDIS_URL=redis://${REDIS_CONTAINER}:6379"
-                                    MYSQL_URL=${MYSQL_CONTAINER}:3306 MYSQL_USER=${MYSQL_USER} MYSQL_PASSWORD=${MYSQL_PASSWORD} REDIS_URL=redis://${REDIS_CONTAINER}:6379 mvn test
 
-                                    # Package
-                                    mvn package -DskipTests
+                                    # Run compile, test, and package in single command to reuse dependencies
+                                    MYSQL_URL=${MYSQL_CONTAINER}:3306 MYSQL_USER=${MYSQL_USER} MYSQL_PASSWORD=${MYSQL_PASSWORD} REDIS_URL=redis://${REDIS_CONTAINER}:6379 mvn compile test package
+
+                                    # Verify no stale config files exist
+                                    echo "Checking for stale configuration files:"
+                                    find target/classes -name "application-*.properties" | grep -v "application.properties" || echo "No stale config files found"
                                 '''
                             }
 
