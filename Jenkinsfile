@@ -174,7 +174,7 @@ pipeline {
                             }
 
                             // Publish test results
-                            junit testResultsPattern: 'tinyurl-api/target/surefire-reports/*.xml', allowEmptyResults: true
+                            junit testResults: 'tinyurl-api/target/surefire-reports/*.xml', allowEmptyResults: true
 
                             // Archive JAR
                             archiveArtifacts artifacts: 'tinyurl-api/target/*.jar', fingerprint: true, allowEmptyArchive: true
