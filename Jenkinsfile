@@ -545,6 +545,32 @@ pipeline {
         failure {
             script {
                 echo "❌ Pipeline failed for branch: ${env.BRANCH_NAME}"
+
+                // Cleanup containers that were started during the build
+                echo "🧹 Cleaning up containers after build failure..."
+
+                try {
+                    sh """
+                        # Stop and remove backend container if it exists
+                        if docker ps -a --format '{{.Names}}' | grep -q "^${BACKEND_CONTAINER}\$"; then
+                            echo "Stopping backend container: ${BACKEND_CONTAINER}"
+                            docker stop ${BACKEND_CONTAINER} || true
+                            docker rm ${BACKEND_CONTAINER} || true
+                        fi
+
+                        # Stop and remove frontend container if it exists
+                        if docker ps -a --format '{{.Names}}' | grep -q "^${FRONTEND_CONTAINER}\$"; then
+                            echo "Stopping frontend container: ${FRONTEND_CONTAINER}"
+                            docker stop ${FRONTEND_CONTAINER} || true
+                            docker rm ${FRONTEND_CONTAINER} || true
+                        fi
+
+                        echo "✅ Cleanup completed"
+                    """
+                } catch (Exception e) {
+                    echo "⚠️ Cleanup failed but continuing: ${e.getMessage()}"
+                }
+
                 // Add failure notification logic here
             }
         }
