@@ -160,8 +160,12 @@ pipeline {
                                     echo "Checking for stale configuration files:"
                                     find target/classes -name "application-*.properties" | grep -v "application.properties" || echo "No stale config files found"
 
-                                    # Test (with database available)
-                                    mvn test
+                                    # Test (with database available) - pass environment variables
+                                    echo "🧪 Maven test environment variables:"
+                                    echo "  MYSQL_URL=${MYSQL_CONTAINER}:3306"
+                                    echo "  MYSQL_USER=${MYSQL_USER}"
+                                    echo "  MYSQL_PASSWORD=${MYSQL_PASSWORD}"
+                                    MYSQL_URL=${MYSQL_CONTAINER}:3306 MYSQL_USER=${MYSQL_USER} MYSQL_PASSWORD=${MYSQL_PASSWORD} mvn test
 
                                     # Package
                                     mvn package -DskipTests
