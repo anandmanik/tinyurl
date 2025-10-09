@@ -295,15 +295,13 @@ pipeline {
                         echo "  MySQL User: ${MYSQL_USER}"
                         echo "  Spring Profile: ${SPRING_PROFILE}"
 
-                        # Verify network connectivity one more time before backend start
+                        # Verify network connectivity before backend start
                         echo "🔍 Final network connectivity verification:"
                         docker run --rm --network ${GLOBAL_NETWORK} alpine:latest sh -c "
-                            echo 'Testing DNS resolution:'
-                            nslookup ${MYSQL_CONTAINER} || echo 'DNS lookup failed'
-                            nslookup ${REDIS_CONTAINER} || echo 'DNS lookup failed'
-                            echo 'Testing network connectivity:'
-                            ping -c 1 ${MYSQL_CONTAINER} && echo 'MySQL ping: SUCCESS' || echo 'MySQL ping: FAILED'
-                            ping -c 1 ${REDIS_CONTAINER} && echo 'Redis ping: SUCCESS' || echo 'Redis ping: FAILED'
+                            echo 'Testing MySQL port connectivity:'
+                            timeout 5 sh -c 'cat < /dev/null > /dev/tcp/${MYSQL_CONTAINER}/3306' && echo 'MySQL port 3306: OPEN' || echo 'MySQL port 3306: CLOSED'
+                            echo 'Testing Redis port connectivity:'
+                            timeout 5 sh -c 'cat < /dev/null > /dev/tcp/${REDIS_CONTAINER}/6379' && echo 'Redis port 6379: OPEN' || echo 'Redis port 6379: CLOSED'
                         "
 
                         # Test MySQL connection with exact same credentials backend will use
@@ -456,25 +454,18 @@ pipeline {
                         echo "📄 Complete real-time logs captured during startup:"
                         cat /tmp/backend_logs.log 2>/dev/null | head -200 || echo "No real-time logs available"
 
-                        # Test connectivity FROM the backend container TO MySQL
-                        echo "🔗 Testing MySQL connectivity FROM backend container:"
+                        # Test basic connectivity from backend container
+                        echo "🔗 Testing basic connectivity FROM backend container:"
                         docker exec ${BACKEND_CONTAINER} sh -c "
-                            echo 'Testing DNS resolution from backend:'
-                            nslookup ${MYSQL_CONTAINER} || echo 'Backend DNS lookup failed'
-                            echo 'Testing ping from backend:'
-                            ping -c 1 ${MYSQL_CONTAINER} && echo 'Backend to MySQL ping: SUCCESS' || echo 'Backend to MySQL ping: FAILED'
                             echo 'Testing MySQL port 3306 connectivity:'
                             timeout 5 bash -c '</dev/tcp/${MYSQL_CONTAINER}/3306' && echo 'MySQL port 3306: OPEN' || echo 'MySQL port 3306: CLOSED'
+                            echo 'Testing Redis port 6379 connectivity:'
+                            timeout 5 bash -c '</dev/tcp/${REDIS_CONTAINER}/6379' && echo 'Redis port 6379: OPEN' || echo 'Redis port 6379: CLOSED'
                         " || echo "Could not test connectivity from backend container"
 
-                        # Try MySQL connection from backend container using same credentials
-                        echo "🗄️ Testing MySQL connection FROM backend container:"
-                        docker exec ${BACKEND_CONTAINER} sh -c "
-                            # Install mysql client if not available (for debugging)
-                            apt-get update && apt-get install -y mysql-client 2>/dev/null || echo 'Could not install mysql client'
-                        " || echo "Could not prepare MySQL client"
-
-                        docker exec ${BACKEND_CONTAINER} mysql -h ${MYSQL_CONTAINER} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} --connect-timeout=5 -e "SELECT 'Connection from backend container SUCCESSFUL' as status;" 2>/dev/null || echo "❌ MySQL connection from backend container FAILED"
+                        # Check application logs for successful startup
+                        echo "🔍 Checking for successful application startup:"
+                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "started.*in.*seconds" | tail -1 || echo "Application startup message not found"
 
                         # Check if backend is responding
                         echo "🏥 Health check..."
