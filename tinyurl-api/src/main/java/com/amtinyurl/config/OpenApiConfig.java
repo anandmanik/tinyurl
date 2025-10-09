@@ -35,7 +35,7 @@ public class OpenApiConfig {
                                 .url("https://opensource.org/licenses/MIT")))
                 .servers(List.of(
                         new Server()
-                                .url(baseUrl + ":8080")
+                                .url(baseUrl + ":8082")
                                 .description("Development server"),
                         new Server()
                                 .url("https://api.tinyurl.example.com")

@@ -52,7 +52,7 @@ services:
       - JWT_SECRET=1fe2275ec12ed522e57b743c64facf12
       - BASE_URL=http://localhost
     ports:
-      - "8080:8080"
+      - "8082:8082"
     depends_on:
       mysql:
         condition: service_healthy
@@ -61,7 +61,7 @@ services:
     networks:
       - tinyurl-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/healthz"]
+      test: ["CMD", "curl", "-f", "http://localhost:8082/api/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -74,7 +74,7 @@ services:
       dockerfile: Dockerfile
     container_name: tinyurl-frontend
     environment:
-      - REACT_APP_API_URL=http://localhost:8080
+      - REACT_APP_API_URL=http://localhost:8082
     ports:
       - "3000:80"
     depends_on:
