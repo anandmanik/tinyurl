@@ -12,6 +12,20 @@ pipeline {
     // Using Docker containers instead of Jenkins tools
 
     stages {
+        stage('Skip Dev Branch') {
+            when {
+                branch 'dev'
+            }
+            steps {
+                script {
+                    echo "⏸️ Skipping pipeline execution on dev branch as requested"
+                    echo "📝 To re-enable, remove the 'Skip Dev Branch' stage from Jenkinsfile"
+                    currentBuild.result = 'ABORTED'
+                    error('Pipeline execution paused for dev branch')
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -226,13 +240,6 @@ pipeline {
         }
 
         stage('Integration Tests') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                    changeRequest()
-                }
-            }
             steps {
                 script {
                     sh '''
@@ -497,12 +504,6 @@ pipeline {
 
 
         stage('Deploy to Dev') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
             steps {
                 script {
                     sh '''
@@ -510,9 +511,23 @@ pipeline {
                         docker start ${BACKEND_CONTAINER} 2>/dev/null || echo "Backend already running"
                         docker start ${FRONTEND_CONTAINER} 2>/dev/null || echo "Frontend already running"
 
-                        # Health check
+                        # Health check with debugging
+                        echo "🏥 Final health checks..."
                         sleep 15
-                        curl -f ${BASE_URL}:${API_PORT}/api/healthz || exit 1
+
+                        echo "Checking backend health at ${BASE_URL}:${API_PORT}/api/healthz"
+                        if ! curl -f ${BASE_URL}:${API_PORT}/api/healthz; then
+                            echo "❌ Backend health check failed, showing debug info:"
+                            echo "Backend container status:"
+                            docker ps --filter name=${BACKEND_CONTAINER}
+                            echo "Backend logs (last 20 lines):"
+                            docker logs --tail 20 ${BACKEND_CONTAINER}
+                            echo "Attempting health check with verbose output:"
+                            curl -v ${BASE_URL}:${API_PORT}/api/healthz || true
+                            exit 1
+                        fi
+
+                        echo "Checking frontend health at ${BASE_URL}:${FRONTEND_PORT}/"
                         curl -f ${BASE_URL}:${FRONTEND_PORT}/ || exit 1
                     '''
                 }
