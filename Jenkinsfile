@@ -174,7 +174,7 @@ pipeline {
                             }
 
                             // Publish test results
-                            publishTestResults testResultsPattern: 'tinyurl-api/target/surefire-reports/*.xml', allowEmptyResults: true
+                            junit testResultsPattern: 'tinyurl-api/target/surefire-reports/*.xml', allowEmptyResults: true
 
                             // Archive JAR
                             archiveArtifacts artifacts: 'tinyurl-api/target/*.jar', fingerprint: true, allowEmptyArchive: true
@@ -196,8 +196,8 @@ pipeline {
                             docker.image('node:18-alpine').inside("-v /var/run/docker.sock:/var/run/docker.sock --network ${env.GLOBAL_NETWORK} -v \${JENKINS_HOME}/.npm:/root/.npm") {
                                 sh '''
                                     cd tinyurl-frontend
-                                    # Install dependencies
-                                    npm ci
+                                    # Install dependencies (use npm install to update lock file if needed)
+                                    npm install
 
                                     # Lint
                                     npm run lint || echo "Lint warnings ignored"
