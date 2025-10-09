@@ -12,6 +12,20 @@ pipeline {
     // Using Docker containers instead of Jenkins tools
 
     stages {
+        stage('Skip Dev Branch') {
+            when {
+                branch 'dev'
+            }
+            steps {
+                script {
+                    echo "⏸️ Skipping pipeline execution on dev branch as requested"
+                    echo "📝 To re-enable, remove the 'Skip Dev Branch' stage from Jenkinsfile"
+                    currentBuild.result = 'ABORTED'
+                    error('Pipeline execution paused for dev branch')
+                }
+            }
+        }
+
         stage('Checkout') {
             steps {
                 checkout scm
