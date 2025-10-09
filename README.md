@@ -58,14 +58,14 @@ A complete URL shortening service built with Spring Boot backend and React front
 3. **Verify services are running**
    ```bash
    docker ps
-   curl http://localhost:8080/api/healthz
+   curl http://localhost:8082/api/healthz
    ```
 
 4. **Access the application**
    - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8080
-   - API Documentation: http://localhost:8080/api/swagger-ui.html
-   - Health Check: http://localhost:8080/api/healthz
+   - Backend API: http://localhost:8082
+   - API Documentation: http://localhost:8082/api/swagger-ui.html
+   - Health Check: http://localhost:8082/api/healthz
 
 ### Local Development
 
@@ -107,7 +107,7 @@ The application uses environment-specific configuration:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `API_PORT` | Backend server port | 8080 |
+| `API_PORT` | Backend server port | 8082 |
 | `FRONTEND_PORT` | Frontend dev server port | 3000 |
 | `MYSQL_URL` | MySQL connection URL | localhost:3306 |
 | `REDIS_URL` | Redis connection URL | redis://localhost:6379 |
@@ -144,8 +144,8 @@ CREATE TABLE user_urls (
 ### Interactive API Documentation
 
 The API includes comprehensive Swagger/OpenAPI documentation accessible at:
-- **Swagger UI**: http://localhost:8080/api/swagger-ui.html
-- **OpenAPI Spec**: http://localhost:8080/api/api-docs
+- **Swagger UI**: http://localhost:8082/api/swagger-ui.html
+- **OpenAPI Spec**: http://localhost:8082/api/api-docs
 
 The documentation provides:
 - Complete endpoint specifications with examples
@@ -159,13 +159,13 @@ All API endpoints (except health check and redirects) require JWT authentication
 
 ```bash
 # Get JWT token
-curl -X POST http://localhost:8080/api/token \
+curl -X POST http://localhost:8082/api/token \
   -H "Content-Type: application/json" \
   -d '{"userId": "user123"}'
 
 # Use token in subsequent requests
 curl -H "Authorization: Bearer <token>" \
-  http://localhost:8080/api/urls
+  http://localhost:8082/api/urls
 ```
 
 ### Endpoints
@@ -188,7 +188,7 @@ curl -H "Authorization: Bearer <token>" \
 
 ```bash
 # Create short URL
-curl -X POST http://localhost:8080/api/urls \
+curl -X POST http://localhost:8082/api/urls \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com/very/long/url"}'
@@ -278,7 +278,7 @@ The application consists of four Docker services:
    - Health check: redis-cli ping
 
 3. **Backend** (`tinyurl-backend`)
-   - Port: 8080
+   - Port: 8082
    - Health check: curl /api/healthz
    - Depends on: MySQL, Redis
 
@@ -334,7 +334,7 @@ npm test
 docker-compose up -d
 
 # Run integration tests
-curl http://localhost:8080/api/healthz
+curl http://localhost:8082/api/healthz
 curl http://localhost:3000/
 ```
 
@@ -345,7 +345,7 @@ curl http://localhost:3000/
 The backend provides comprehensive health checks:
 
 ```bash
-curl http://localhost:8080/api/healthz
+curl http://localhost:8082/api/healthz
 ```
 
 Response:
@@ -410,7 +410,7 @@ docker-compose logs -f
 3. **Frontend Not Loading**
    ```bash
    # Check if backend is accessible
-   curl http://localhost:8080/api/healthz
+   curl http://localhost:8082/api/healthz
    ```
 
 4. **Short URLs Not Working**

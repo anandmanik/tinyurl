@@ -30,7 +30,7 @@ info:
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:8082
     description: Development server
   - url: https://api.tinyurl.example.com
     description: Production server

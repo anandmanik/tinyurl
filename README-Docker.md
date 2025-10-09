@@ -12,7 +12,7 @@ This document describes how to run the TinyURL service using Docker and Docker C
 
 The Docker setup includes:
 - **Frontend**: React app served by Nginx (port 3000)
-- **Backend**: Spring Boot API (port 8080)
+- **Backend**: Spring Boot API (port 8082)
 - **Database**: MySQL 8.0 (port 3306)
 - **Cache**: Redis 7 (port 6379)
 
@@ -30,8 +30,8 @@ The Docker setup includes:
 
 3. **Access the application:**
    - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8080
-   - Health Check: http://localhost:8080/healthz
+   - Backend API: http://localhost:8082
+   - Health Check: http://localhost:8082/healthz
 
 ## Development Commands
 
@@ -125,7 +125,7 @@ All services include health checks:
    ```bash
    # Check what's using the ports
    lsof -i :3000
-   lsof -i :8080
+   lsof -i :8082
    lsof -i :3306
    lsof -i :6379
    ```
@@ -190,7 +190,7 @@ For production deployment:
 ## Network Configuration
 
 Services communicate via the `tinyurl-network` bridge network:
-- Frontend → Backend: `http://backend:8080`
+- Frontend → Backend: `http://backend:8082`
 - Backend → MySQL: `jdbc:mysql://mysql:3306/tinyurl`
 - Backend → Redis: `redis://redis:6379`
 
