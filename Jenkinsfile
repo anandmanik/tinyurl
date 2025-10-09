@@ -165,7 +165,8 @@ pipeline {
                                     echo "  MYSQL_URL=${MYSQL_CONTAINER}:3306"
                                     echo "  MYSQL_USER=${MYSQL_USER}"
                                     echo "  MYSQL_PASSWORD=${MYSQL_PASSWORD}"
-                                    MYSQL_URL=${MYSQL_CONTAINER}:3306 MYSQL_USER=${MYSQL_USER} MYSQL_PASSWORD=${MYSQL_PASSWORD} mvn test
+                                    echo "  REDIS_URL=redis://${REDIS_CONTAINER}:6379"
+                                    MYSQL_URL=${MYSQL_CONTAINER}:3306 MYSQL_USER=${MYSQL_USER} MYSQL_PASSWORD=${MYSQL_PASSWORD} REDIS_URL=redis://${REDIS_CONTAINER}:6379 mvn test
 
                                     # Package
                                     mvn package -DskipTests
