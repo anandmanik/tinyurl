@@ -10,14 +10,14 @@ WORKDIR /app
 # Copy POM file
 COPY pom.xml .
 
-# Download dependencies with cache mount (this layer will be cached if pom.xml doesn't change)
-RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline -B
+# Download dependencies (this layer will be cached if pom.xml doesn't change)
+RUN mvn dependency:go-offline -B
 
 # Copy source code
 COPY src ./src
 
-# Build the application with cache mount
-RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests
+# Build the application
+RUN mvn clean package -DskipTests
 
 # Runtime stage
 FROM eclipse-temurin:25-jre
