@@ -57,6 +57,10 @@ pipeline {
                     env.BASE_URL = props.BASE_URL
                     env.SPRING_PROFILE = props.SPRING_PROFILE
 
+                    // Cache configuration
+                    env.MAVEN_CACHE_HOST_PATH = props.MAVEN_CACHE_HOST_PATH
+                    env.NPM_CACHE_HOST_PATH = props.NPM_CACHE_HOST_PATH
+
                     // Logging configuration
                     env.LOGGING_LEVEL_ROOT = props.LOGGING_LEVEL_ROOT
                     env.LOGGING_LEVEL_HIKARI = props.LOGGING_LEVEL_HIKARI
@@ -196,7 +200,7 @@ pipeline {
                             // Docker build outside container
                             sh '''
                                 cd tinyurl-api
-                                docker build -t ${BACKEND_IMAGE}:${BUILD_NUMBER} .
+                                docker build -v ${MAVEN_CACHE_HOST_PATH}:/root/.m2 -t ${BACKEND_IMAGE}:${BUILD_NUMBER} .
                                 docker tag ${BACKEND_IMAGE}:${BUILD_NUMBER} ${BACKEND_IMAGE}:latest
                             '''
                         }
@@ -230,7 +234,7 @@ pipeline {
                             // Docker build outside container
                             sh '''
                                 cd tinyurl-frontend
-                                docker build -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} .
+                                docker build -v ${NPM_CACHE_HOST_PATH}:/root/.npm -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} .
                                 docker tag ${FRONTEND_IMAGE}:${BUILD_NUMBER} ${FRONTEND_IMAGE}:latest
                             '''
                         }
