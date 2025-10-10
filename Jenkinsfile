@@ -200,7 +200,7 @@ pipeline {
                             // Docker build outside container
                             sh '''
                                 cd tinyurl-api
-                                docker build -v ${MAVEN_CACHE_HOST_PATH}:/root/.m2 -t ${BACKEND_IMAGE}:${BUILD_NUMBER} .
+                                docker build -t ${BACKEND_IMAGE}:${BUILD_NUMBER} .
                                 docker tag ${BACKEND_IMAGE}:${BUILD_NUMBER} ${BACKEND_IMAGE}:latest
                             '''
                         }
@@ -234,7 +234,7 @@ pipeline {
                             // Docker build outside container
                             sh '''
                                 cd tinyurl-frontend
-                                docker build -v ${NPM_CACHE_HOST_PATH}:/root/.npm -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} .
+                                docker build -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} .
                                 docker tag ${FRONTEND_IMAGE}:${BUILD_NUMBER} ${FRONTEND_IMAGE}:latest
                             '''
                         }
