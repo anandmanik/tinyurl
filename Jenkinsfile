@@ -334,7 +334,7 @@ pipeline {
                         # Show the exact docker run command that will be executed
                         echo "🐳 Executing docker run command:"
                         set -x
-                        docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} \
+                        docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} --network-alias backend \
                             -e SPRING_PROFILES_ACTIVE=${SPRING_PROFILE} \
                             -e SPRING_PROFILES_INCLUDE="" \
                             -e API_PORT=${API_PORT} \
