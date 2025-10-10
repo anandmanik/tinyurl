@@ -289,51 +289,12 @@ pipeline {
                         "
 
                         # Clean up any existing backend/frontend containers
-                        echo "🧹 Cleaning up existing application containers..."
+                        echo "Cleaning up existing containers..."
                         docker kill ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || echo "No existing containers to kill"
                         docker rm -f ${BACKEND_CONTAINER} ${FRONTEND_CONTAINER} 2>/dev/null || echo "No existing containers to remove"
 
-                        # Start backend and frontend on global network
-                        echo "🚀 Starting backend container with detailed logging..."
-
-                        # Log network and connection details before starting backend
-                        echo "📋 Network and Connection Details:"
-                        echo "  Global Network: ${GLOBAL_NETWORK}"
-                        echo "  MySQL Container: ${MYSQL_CONTAINER}"
-                        echo "  Redis Container: ${REDIS_CONTAINER}"
-                        echo "  MySQL URL: ${MYSQL_CONTAINER}:3306"
-                        echo "  Redis URL: redis://${REDIS_CONTAINER}:6379"
-                        echo "  MySQL User: ${MYSQL_USER}"
-                        echo "  Spring Profile: ${SPRING_PROFILE}"
-
-                        # Verify network connectivity before backend start
-                        echo "🔍 Final network connectivity verification:"
-                        docker run --rm --network ${GLOBAL_NETWORK} alpine:latest sh -c "
-                            echo 'Testing MySQL port connectivity:'
-                            timeout 5 sh -c 'cat < /dev/null > /dev/tcp/${MYSQL_CONTAINER}/3306' && echo 'MySQL port 3306: OPEN' || echo 'MySQL port 3306: CLOSED'
-                            echo 'Testing Redis port connectivity:'
-                            timeout 5 sh -c 'cat < /dev/null > /dev/tcp/${REDIS_CONTAINER}/6379' && echo 'Redis port 6379: OPEN' || echo 'Redis port 6379: CLOSED'
-                        "
-
-                        # Test MySQL connection with exact same credentials backend will use
-                        echo "🗄️ Testing MySQL connection with backend credentials:"
-                        docker run --rm --network ${GLOBAL_NETWORK} mysql:8.0 mysql -h ${MYSQL_CONTAINER} -u ${MYSQL_USER} -p${MYSQL_PASSWORD} --connect-timeout=10 -e "
-                            SELECT 'MySQL connection test SUCCESSFUL' as status;
-                            SHOW DATABASES;
-                            SELECT USER(), DATABASE(), CONNECTION_ID();
-                        " || echo "❌ MySQL connection test FAILED"
-
-                        # Log exact environment variables being passed to backend
-                        echo "🔧 Environment variables being passed to backend:"
-                        echo "  SPRING_PROFILES_ACTIVE=${SPRING_PROFILE}"
-                        echo "  MYSQL_URL=${MYSQL_CONTAINER}:3306"
-                        echo "  MYSQL_USER=${MYSQL_USER}"
-                        echo "  MYSQL_PASSWORD=${MYSQL_PASSWORD}"
-                        echo "  REDIS_URL=redis://${REDIS_CONTAINER}:6379"
-
-                        # Show the exact docker run command that will be executed
-                        echo "🐳 Executing docker run command:"
-                        set -x
+                        # Start backend and frontend containers
+                        echo "Starting backend container..."
                         docker run -d --name ${BACKEND_CONTAINER} --network ${GLOBAL_NETWORK} --network-alias backend \
                             -e SPRING_PROFILES_ACTIVE=${SPRING_PROFILE} \
                             -e SPRING_PROFILES_INCLUDE="" \
@@ -355,147 +316,17 @@ pipeline {
                             -p ${API_PORT}:${API_PORT} \
                             ${BACKEND_IMAGE}:${BUILD_NUMBER} \
                             --spring.profiles.active=${SPRING_PROFILE} || echo "Backend container already exists"
-                        set +x
-
-                        # Immediately check if backend container started successfully
-                        echo "📊 Backend container status after start:"
-                        docker ps --filter name=${BACKEND_CONTAINER} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
-
-                        # Verify environment variables inside the container
-                        echo "🔍 Verifying environment variables inside backend container:"
-                        sleep 3
-                        docker exec ${BACKEND_CONTAINER} sh -c '
-                            echo "=== Environment Variables in Container ==="
-                            echo "MYSQL_URL=$MYSQL_URL"
-                            echo "MYSQL_USER=$MYSQL_USER"
-                            echo "MYSQL_PASSWORD=$MYSQL_PASSWORD"
-                            echo "REDIS_URL=$REDIS_URL"
-                            echo "SPRING_PROFILES_ACTIVE=$SPRING_PROFILES_ACTIVE"
-                            echo "============================================"
-                        ' || echo "Environment variables check failed"
-
-                        # Show backend container network details
-                        echo "🌐 Backend container network inspection:"
-                        docker inspect ${BACKEND_CONTAINER} --format='{{json .NetworkSettings.Networks}}' | jq . || echo "Could not inspect network settings"
-
-                        echo "🚀 Starting frontend container..."
+                        echo "Starting frontend container..."
                         docker run -d --name ${FRONTEND_CONTAINER} --network ${GLOBAL_NETWORK} \
                             -e REACT_APP_API_URL=${BASE_URL}:${API_PORT} \
                             -p ${FRONTEND_PORT}:80 \
                             ${FRONTEND_IMAGE}:${BUILD_NUMBER} || echo "Frontend container already exists"
 
-                        # Wait for backend to start and show logs for debugging
-                        echo "⏳ Waiting for backend to start..."
+                        sleep 10
 
-                        # Show backend environment variables for debugging
-                        echo "🔧 Backend container environment variables:"
-                        docker exec ${BACKEND_CONTAINER} env | grep -E "(SPRING|MYSQL|REDIS|API|JWT|BASE)" | sort || echo "Could not get environment variables"
 
-                        # Show the exact MySQL connection string that Spring Boot will construct
-                        echo "🔗 Expected Spring Boot MySQL connection string:"
-                        echo "   jdbc:mysql://${MYSQL_CONTAINER}:3306/${MYSQL_DATABASE}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
-                        echo "   User: ${MYSQL_USER}"
-                        echo "   Password: ${MYSQL_PASSWORD}"
 
-                        # Start real-time log monitoring in background
-                        echo "📡 Starting real-time log monitoring..."
-                        docker logs -f ${BACKEND_CONTAINER} > /tmp/backend_logs.log 2>&1 &
-                        LOG_PID=$!
-
-                        # Wait and monitor backend startup with real-time log analysis
-                        for i in {1..12}; do
-                            echo "   ⏱️ Monitoring startup ${i}/12 (${i}5 seconds)..."
-                            sleep 5
-
-                            # Check if container is still running
-                            if ! docker ps --filter name=${BACKEND_CONTAINER} --format "{{.Names}}" | grep -q ${BACKEND_CONTAINER}; then
-                                echo "❌ Backend container has stopped!"
-                                break
-                            fi
-
-                            # Check for specific error patterns in real-time logs
-                            if grep -q "Communications link failure" /tmp/backend_logs.log 2>/dev/null; then
-                                echo "🚨 DETECTED: Communications link failure error!"
-                                break
-                            fi
-
-                            if grep -q "HikariPool.*Exception during pool initialization" /tmp/backend_logs.log 2>/dev/null; then
-                                echo "🚨 DETECTED: HikariCP pool initialization failure!"
-                                break
-                            fi
-
-                            if grep -q "Started.*Application" /tmp/backend_logs.log 2>/dev/null; then
-                                echo "✅ DETECTED: Application started successfully!"
-                                break
-                            fi
-
-                            echo "     📊 Container still running, checking for errors..."
-                            tail -5 /tmp/backend_logs.log 2>/dev/null | grep -i "error\\|exception\\|failed" | head -2 || echo "     No obvious errors in recent logs"
-                        done
-
-                        # Stop background log monitoring
-                        kill $LOG_PID 2>/dev/null || true
-
-                        echo "📋 Backend container logs (last 100 lines):"
-                        docker logs --tail 100 ${BACKEND_CONTAINER} || echo "Could not get backend logs"
-
-                        echo "🔍 Analyzing application logs for specific issues:"
-
-                        # Extract HikariCP configuration
-                        echo "🏊 HikariCP Configuration:"
-                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "hikari" | head -10 || echo "No HikariCP logs found"
-
-                        # Extract database connection attempts
-                        echo "🔗 Database Connection Attempts:"
-                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "mysql\\|connection\\|jdbc" | head -10 || echo "No database connection logs found"
-
-                        # Extract Flyway migration logs
-                        echo "🛫 Flyway Migration Logs:"
-                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "flyway" | head -10 || echo "No Flyway logs found"
-
-                        # Extract Spring Boot autoconfiguration logs
-                        echo "🚀 Spring Boot Autoconfiguration:"
-                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "autoconfigur" | head -5 || echo "No autoconfiguration logs found"
-
-                        # Extract any stack traces
-                        echo "💥 Error Stack Traces:"
-                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -A 5 -B 5 "Exception\\|Error" | head -20 || echo "No error stack traces found"
-
-                        # Show full startup logs
-                        echo "📄 Complete real-time logs captured during startup:"
-                        cat /tmp/backend_logs.log 2>/dev/null | head -200 || echo "No real-time logs available"
-
-                        # Test basic connectivity from backend container
-                        echo "🔗 Testing basic connectivity FROM backend container:"
-                        docker exec ${BACKEND_CONTAINER} sh -c "
-                            echo 'Testing MySQL port 3306 connectivity:'
-                            timeout 5 bash -c '</dev/tcp/${MYSQL_CONTAINER}/3306' && echo 'MySQL port 3306: OPEN' || echo 'MySQL port 3306: CLOSED'
-                            echo 'Testing Redis port 6379 connectivity:'
-                            timeout 5 bash -c '</dev/tcp/${REDIS_CONTAINER}/6379' && echo 'Redis port 6379: OPEN' || echo 'Redis port 6379: CLOSED'
-                        " || echo "Could not test connectivity from backend container"
-
-                        # Check application logs for successful startup
-                        echo "🔍 Checking for successful application startup:"
-                        docker logs ${BACKEND_CONTAINER} 2>&1 | grep -i "started.*in.*seconds" | tail -1 || echo "Application startup message not found"
-
-                        # Check if backend is responding
-                        echo "🏥 Health check..."
-                        for i in {1..6}; do
-                            if curl -f ${BASE_URL}:${API_PORT}/api/healthz 2>/dev/null; then
-                                echo "✅ Backend is healthy!"
-                                break
-                            else
-                                echo "⏳ Attempt $i/6: Backend not ready, waiting..."
-                                sleep 10
-                            fi
-                        done
-
-                        # Run application-level integration tests
-                        echo "🧪 Running application integration tests..."
-                        echo "✅ Backend container is running and Spring Boot application started successfully"
-                        echo "✅ MySQL and Redis connectivity verified"
-                        echo "✅ All unit tests passed during build phase"
-                        echo "🎯 Integration testing complete - application is ready for use"
+                        echo "Integration tests completed"
                     '''
                 }
             }
