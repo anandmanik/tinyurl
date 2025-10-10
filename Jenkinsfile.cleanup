@@ -12,6 +12,11 @@ pipeline {
             defaultValue: false,
             description: 'Force remove containers even if they are running'
         )
+        booleanParam(
+            name: 'CLEAN_CACHE',
+            defaultValue: false,
+            description: 'Clean Maven and NPM cache directories (will slow down next builds)'
+        )
     }
 
     stages {
@@ -51,11 +56,15 @@ pipeline {
                             CACHE_BASE_DIR="${JENKINS_HOME:-/var/jenkins_home}"
                             echo "Cleaning cache directories in: $CACHE_BASE_DIR"
 
-                            echo "🧹 Cleaning Maven and NPM cache directories..."
-                            rm -rf "$CACHE_BASE_DIR/.m2/repository"/* 2>/dev/null || echo "Maven cache already clean"
-                            rm -rf "$CACHE_BASE_DIR/.npm"/* 2>/dev/null || echo "NPM cache already clean"
-
-                            echo "✅ Cache cleanup completed"
+                            if (params.CLEAN_CACHE) {
+                                echo "🧹 Cleaning Maven and NPM cache directories..."
+                                rm -rf "$CACHE_BASE_DIR/.m2/repository"/* 2>/dev/null || echo "Maven cache already clean"
+                                rm -rf "$CACHE_BASE_DIR/.npm"/* 2>/dev/null || echo "NPM cache already clean"
+                                echo "✅ Cache cleanup completed"
+                            } else {
+                                echo "🧹 Preserving Maven and NPM cache directories for better build performance..."
+                                echo "✅ Cache directories preserved (use CLEAN_CACHE=true to clean)"
+                            }
                         '''
                     } else {
                         echo "🛑 Preserving Docker volumes as requested"
